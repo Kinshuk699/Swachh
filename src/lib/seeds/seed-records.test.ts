@@ -60,4 +60,36 @@ Lavato,South India,premium_lavatory,NH-44,Krishnagiri toll plaza,Krishnagiri,0.9
 Bad Brand,Pan-India,fuel_cafe,3,Invalid confidence`),
     ).toThrow("default_confidence must be between 0 and 1");
   });
+
+  it("throws when default_confidence is missing", () => {
+    expect(() =>
+      parseProxyBrandCsv(`brand_name,region,proxy_type,default_confidence,notes
+No Confidence,Pan-India,fuel_cafe,,Missing confidence`),
+    ).toThrow("default_confidence is required");
+  });
+
+  it("parses quoted fields containing commas", () => {
+    const records = parseProxyBrandCsv(`brand_name,region,proxy_type,default_confidence,notes
+CommaBrand,Pan-India,wayside_amenity,0.5,"Clean, well-maintained restroom"`);
+
+    expect(records[0].notes).toBe("Clean, well-maintained restroom");
+  });
+
+  it('parses escaped quotes as a single quote', () => {
+    const records = parseProxyBrandCsv(`brand_name,region,proxy_type,default_confidence,notes
+QuoteBrand,Pan-India,wayside_amenity,0.6,"He said ""Hello"" to me"`);
+
+    expect(records[0].notes).toBe('He said "Hello" to me');
+  });
+
+  it('returns [] for empty CSV input', () => {
+    expect(parseProxyBrandCsv('')).toEqual([]);
+  });
+
+  it('throws on unterminated quoted field', () => {
+    expect(() =>
+      parseProxyBrandCsv(`brand_name,region,proxy_type,default_confidence,notes
+BadLine,Pan-India,wayside_amenity,0.7,"Unterminated field`),
+    ).toThrow('Unterminated quoted field in CSV line');
+  });
 });
