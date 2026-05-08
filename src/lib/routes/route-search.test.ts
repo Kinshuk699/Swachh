@@ -16,20 +16,19 @@ describe("buildRouteSearchResponse", () => {
     expect(response.stops).toEqual([]);
   });
 
-  it("returns highway-ranked stops when the traveler supplies a destination", () => {
+  it("returns curated Mumbai-Pune highway stops when the traveler supplies a destination", () => {
     const response = buildRouteSearchResponse({
       origin: "Mumbai",
       destination: "Pune",
-      highwayName: "",
+      highwayName: "Mumbai-Pune Expressway",
       isInsideCity: true,
       distanceToHighwayMeters: 9_000,
     });
 
     expect(response.intent.mode).toBe("plan-route");
-    expect(response.stops.length).toBeGreaterThan(0);
-    const ids = response.stops.map((s) => s.id);
-    expect(ids).toEqual(expect.arrayContaining(["shree-datta-snacks"]));
-    expect(response.stops.every((stop) => stop.distanceFromHighwayMeters <= 2_000 || stop.isEndpointStagingArea)).toBe(true);
+    expect(response.stops.map((stop) => stop.name)).toContain("Shree Datta Snacks");
+    expect(response.stops.every((stop) => stop.highway !== "None")).toBe(true);
+    expect(response.stops.map((stop) => stop.name)).not.toContain("7 Midway Plaza");
   });
 
   it("returns curated seeded stops for Hyderabad-Vijayawada / NH-65 route", () => {
@@ -42,7 +41,33 @@ describe("buildRouteSearchResponse", () => {
     });
 
     expect(response.intent.mode).toBe("plan-route");
-    const ids = response.stops.map((s) => s.id);
-    expect(ids).toEqual(expect.arrayContaining(["7-midway-plaza", "raju-gari-thota"]));
+    expect(response.stops.map((stop) => stop.name)).toEqual(
+      expect.arrayContaining(["7 Midway Plaza", "Raju Gari Thota"]),
+    );
+    expect(response.stops.map((stop) => stop.name)).not.toContain("Shree Datta Snacks");
+  });
+
+  it("returns Lavato for NH-44 Krishnagiri toll-plaza route context", () => {
+    const response = buildRouteSearchResponse({
+      origin: "Bengaluru",
+      destination: "Krishnagiri",
+      highwayName: "NH-44",
+      isInsideCity: true,
+      distanceToHighwayMeters: 6_500,
+    });
+
+    expect(response.stops.map((stop) => stop.name)).toContain("Lavato");
+  });
+
+  it("returns Hotel Highway King for NH-48 Delhi-Jaipur route context", () => {
+    const response = buildRouteSearchResponse({
+      origin: "Delhi",
+      destination: "Jaipur",
+      highwayName: "NH-48",
+      isInsideCity: true,
+      distanceToHighwayMeters: 7_500,
+    });
+
+    expect(response.stops.map((stop) => stop.name)).toContain("Hotel Highway King");
   });
 });

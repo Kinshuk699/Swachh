@@ -31,42 +31,21 @@ export function buildRouteSearchResponse(input: RouteSearchInput): RouteSearchRe
     return { intent, stops: [] };
   }
 
-  const relevantStops = filterHighwayRelevantStops(sampleHighwayStops) as HighwayStop[];
-  const rankedStops = rankHighwayStops(relevantStops) as HighwayStop[];
+  const matchingStops = filterHighwayRelevantStops(sampleHighwayStops).filter((stop) =>
+    routeMatchesStop(input, stop as HighwayStop),
+  ) as HighwayStop[];
 
-  function normalize(s: string) {
-    return s.trim().toLowerCase();
-  }
+  return { intent, stops: rankHighwayStops(matchingStops) as HighwayStop[] };
+}
 
-  function routeMatchWeight(stop: HighwayStop) {
-    const o = normalize(input.origin);
-    const d = normalize(input.destination);
-    const h = normalize(input.highwayName || "");
-    const stopHighway = normalize(stop.highway || "");
-    const stopLocality = normalize(stop.locality || "");
-    const stopName = normalize(stop.name || "");
+function routeMatchesStop(input: RouteSearchInput, stop: HighwayStop): boolean {
+  const routeText = normalize([input.origin, input.destination, input.highwayName].join(" "));
+  const stopText = normalize([stop.highway, stop.locality, stop.name].join(" "));
+  const routeTokens = routeText.split(" ").filter((token) => token.length >= 3);
 
-    let weight = 0;
-    if (h && stopHighway && stopHighway.includes(h)) weight += 50;
-    if ((o && stopHighway && stopHighway.includes(o)) || (d && stopHighway && stopHighway.includes(d))) weight += 30;
-    if (o && (stopLocality.includes(o) || stopName.includes(o))) weight += 20;
-    if (d && (stopLocality.includes(d) || stopName.includes(d))) weight += 20;
+  return routeTokens.some((token) => stopText.includes(token));
+}
 
-    const routePhrase = `${o}-${d}`;
-    if (routePhrase && (stopName.includes(routePhrase) || stopLocality.includes(routePhrase))) weight += 15;
-
-    // deprioritize dense-city stops for highway-first routing
-    if (stop.isInsideDenseCity) weight -= 40;
-
-    return weight;
-  }
-
-  const boosted = [...rankedStops].map((s, idx) => ({ s, idx, weight: routeMatchWeight(s) }))
-    .sort((a, b) => {
-      if (b.weight !== a.weight) return b.weight - a.weight;
-      return a.idx - b.idx;
-    })
-    .map((x) => x.s);
-
-  return { intent, stops: boosted };
+function normalize(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 }

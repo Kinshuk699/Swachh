@@ -24,6 +24,6 @@ describe("buildWhatsAppReply", () => {
     });
 
     expect(reply.kind).toBe("stops");
-    expect(reply.message).toContain("Expressway Food Plaza");
+    expect(reply.message).toContain("Shree Datta Snacks");
   });
 });
