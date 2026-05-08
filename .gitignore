@@ -17,6 +17,9 @@
 # local reference clone for workflow skills
 /superpowers
 
+# local implementation worktrees
+/.worktrees
+
 # env files
 .env
 .env*.local
