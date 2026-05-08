@@ -1,0 +1,95 @@
+import type { CandidateStop } from "@/lib/highways/highway-relevance";
+
+export type HighwayStop = CandidateStop & {
+  lat: number;
+  lng: number;
+  highway: string;
+  locality: string;
+  priceLabel: "Free" | "Customer access" | "Unknown";
+  facilities: string[];
+  placeId?: string;
+};
+
+export const sampleHighwayStops: HighwayStop[] = [
+  {
+    id: "mumbai-pune-food-plaza",
+    name: "Expressway Food Plaza",
+    category: "food_plaza",
+    distanceFromRouteMeters: 180,
+    distanceFromHighwayMeters: 80,
+    detourMinutes: 3,
+    isEndpointStagingArea: false,
+    isInsideDenseCity: false,
+    source: "crowdsourced",
+    confidence: 0.94,
+    openNow: true,
+    verified: true,
+    lat: 18.7632,
+    lng: 73.3768,
+    highway: "Mumbai-Pune Expressway",
+    locality: "Khalapur service corridor",
+    priceLabel: "Customer access",
+    facilities: ["Women-friendly", "Food court", "Parking", "Lighting"],
+  },
+  {
+    id: "nh48-toll-plaza",
+    name: "NH48 Toll Plaza Restroom",
+    category: "toll_plaza",
+    distanceFromRouteMeters: 420,
+    distanceFromHighwayMeters: 120,
+    detourMinutes: 5,
+    isEndpointStagingArea: false,
+    isInsideDenseCity: false,
+    source: "crowdsourced",
+    confidence: 0.86,
+    openNow: true,
+    verified: true,
+    lat: 19.3821,
+    lng: 72.9287,
+    highway: "NH48",
+    locality: "Toll plaza block",
+    priceLabel: "Free",
+    facilities: ["Public", "FASTag corridor", "Attendant"],
+  },
+  {
+    id: "city-edge-fuel-station",
+    name: "City Edge Fuel Station",
+    category: "fuel_station",
+    distanceFromRouteMeters: 2_700,
+    distanceFromHighwayMeters: 1_400,
+    detourMinutes: 10,
+    isEndpointStagingArea: true,
+    isInsideDenseCity: true,
+    source: "google_place",
+    confidence: 0.72,
+    openNow: true,
+    verified: false,
+    lat: 18.5975,
+    lng: 73.7182,
+    highway: "Mumbai-Pune Expressway",
+    locality: "Pune entry staging area",
+    priceLabel: "Customer access",
+    facilities: ["Fuel", "Convenience store", "Near city entry"],
+    placeId: "google-place-id-placeholder-city-edge-fuel",
+  },
+  {
+    id: "dense-city-mall",
+    name: "Dense City Mall Restroom",
+    category: "public_restroom",
+    distanceFromRouteMeters: 7_400,
+    distanceFromHighwayMeters: 9_200,
+    detourMinutes: 28,
+    isEndpointStagingArea: false,
+    isInsideDenseCity: true,
+    source: "crowdsourced",
+    confidence: 0.8,
+    openNow: true,
+    verified: true,
+    lat: 18.9388,
+    lng: 72.8354,
+    highway: "None",
+    locality: "Mumbai city center",
+    priceLabel: "Free",
+    facilities: ["Urban mall"],
+  },
+];
