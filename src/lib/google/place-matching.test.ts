@@ -61,9 +61,15 @@ describe("Google place matching", () => {
       rating: 4.6,
     };
 
-    const stored = toStoredPlaceMatch(googleResult, { seedName: "Lavato", highwayContext: "NH-44", routeContext: "Krishnagiri toll plaza", restroomConfidence: 0.9 });
-    expect((stored as any).displayName).toBeUndefined();
-    expect((stored as any).formattedAddress).toBeUndefined();
-    expect((stored as any).rating).toBeUndefined();
+    const stored = toStoredPlaceMatch(googleResult, {
+      seedName: "Lavato",
+      highwayContext: "NH-44",
+      routeContext: "Krishnagiri toll plaza",
+      restroomConfidence: 0.9,
+    });
+
+    expect(stored).not.toHaveProperty("displayName");
+    expect(stored).not.toHaveProperty("formattedAddress");
+    expect(stored).not.toHaveProperty("rating");
   });
 });
