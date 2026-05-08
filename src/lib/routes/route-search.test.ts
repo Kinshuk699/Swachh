@@ -27,7 +27,22 @@ describe("buildRouteSearchResponse", () => {
 
     expect(response.intent.mode).toBe("plan-route");
     expect(response.stops.length).toBeGreaterThan(0);
-    expect(response.stops[0].id).toBe("mumbai-pune-food-plaza");
+    const ids = response.stops.map((s) => s.id);
+    expect(ids).toEqual(expect.arrayContaining(["shree-datta-snacks"]));
     expect(response.stops.every((stop) => stop.distanceFromHighwayMeters <= 2_000 || stop.isEndpointStagingArea)).toBe(true);
+  });
+
+  it("returns curated seeded stops for Hyderabad-Vijayawada / NH-65 route", () => {
+    const response = buildRouteSearchResponse({
+      origin: "Hyderabad",
+      destination: "Vijayawada",
+      highwayName: "NH-65",
+      isInsideCity: false,
+      distanceToHighwayMeters: 500,
+    });
+
+    expect(response.intent.mode).toBe("plan-route");
+    const ids = response.stops.map((s) => s.id);
+    expect(ids).toEqual(expect.arrayContaining(["7-midway-plaza", "raju-gari-thota"]));
   });
 });
