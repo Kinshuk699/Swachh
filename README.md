@@ -20,6 +20,12 @@ npm install
 npm run dev
 ```
 
+## First Slice
+
+Swachh starts with a curated route planner. Known highway restroom proxy brands and route-specific stop candidates live in CSV files under `data/`. The app uses those records to show highway-relevant restroom stops for a trip and asks for destination context when a user is inside a city.
+
+Google-derived place data must be handled carefully. Store only Google `place_id` plus Swachh-owned annotations such as route context, category, restroom confidence, and notes. Fetch live Google details only when needed.
+
 ## Verification
 
 ```bash
@@ -27,6 +33,7 @@ npm run lint
 npm run typecheck
 npm run test
 npm run build
+npm run test:e2e
 ```
 
 ## Environment
