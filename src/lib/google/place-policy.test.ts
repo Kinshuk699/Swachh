@@ -8,10 +8,9 @@ import {
 
 describe("Google place storage policy", () => {
   it("rejects an empty placeId in a stored reference", () => {
-    expect(() =>
-      // @ts-expect-error test invalid input
-      toStoredGooglePlaceReference({ placeId: "" }),
-    ).toThrow("stored place reference missing placeId");
+    expect(() => toStoredGooglePlaceReference({ placeId: "" })).toThrow(
+      "stored place reference missing placeId",
+    );
   });
 
   it("maps app camelCase reference to snake_case storage row", () => {
