@@ -39,13 +39,18 @@ export function buildRouteSearchResponse(input: RouteSearchInput): RouteSearchRe
 }
 
 function routeMatchesStop(input: RouteSearchInput, stop: HighwayStop): boolean {
-  const routeText = normalize([input.origin, input.destination, input.highwayName].join(" "));
-  const stopText = normalize([stop.highway, stop.locality, stop.name].join(" "));
-  const routeTokens = routeText.split(" ").filter((token) => token.length >= 3);
+  const routeTokens = tokenizeRouteText([input.origin, input.destination, input.highwayName].join(" "));
+  const stopTokens = new Set(tokenizeRouteText([stop.highway, stop.locality, stop.name].join(" ")));
 
-  return routeTokens.some((token) => stopText.includes(token));
+  return routeTokens.some((token) => stopTokens.has(token));
 }
 
-function normalize(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+function tokenizeRouteText(value: string): string[] {
+  return value
+    .toLowerCase()
+    .replace(/\b(nh|ne)\s*-?\s*(\d+)\b/g, "$1$2")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .split(" ")
+    .filter((token) => token.length >= 3);
 }

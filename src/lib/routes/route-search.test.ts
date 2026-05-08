@@ -47,6 +47,22 @@ describe("buildRouteSearchResponse", () => {
     expect(response.stops.map((stop) => stop.name)).not.toContain("Shree Datta Snacks");
   });
 
+  it("matches curated stops from highway name alone", () => {
+    const response = buildRouteSearchResponse({
+      origin: "",
+      destination: "",
+      highwayName: "NH-65",
+      isInsideCity: false,
+      distanceToHighwayMeters: 500,
+    });
+
+    expect(response.intent.mode).toBe("plan-route");
+    expect(response.stops.map((stop) => stop.name)).toEqual(
+      expect.arrayContaining(["7 Midway Plaza", "Raju Gari Thota"]),
+    );
+    expect(response.stops.map((stop) => stop.name)).not.toContain("Shree Datta Snacks");
+  });
+
   it("returns Lavato for NH-44 Krishnagiri toll-plaza route context", () => {
     const response = buildRouteSearchResponse({
       origin: "Bengaluru",

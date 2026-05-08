@@ -52,7 +52,7 @@ function parseRouteText(text: string): { origin: string; destination: string; hi
     };
   }
 
-  const highwayMatch = normalized.match(/\b(NH\s?\d+|NE\s?\d+|expressway)\b/i);
+  const highwayMatch = normalized.match(/\b((?:NH|NE)\s*-?\s*\d+|expressway)\b/i);
 
   return {
     origin: "Current location",

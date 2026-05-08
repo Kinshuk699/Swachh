@@ -26,4 +26,16 @@ describe("buildWhatsAppReply", () => {
     expect(reply.kind).toBe("stops");
     expect(reply.message).toContain("Shree Datta Snacks");
   });
+
+  it("returns highway stops for a hyphenated NH message", () => {
+    const reply = buildWhatsAppReply({
+      text: "NH-65 washrooms",
+      hasSharedLocation: false,
+      isInsideCity: false,
+      distanceToHighwayMeters: 500,
+    });
+
+    expect(reply.kind).toBe("stops");
+    expect(reply.message).toContain("7 Midway Plaza");
+  });
 });
