@@ -6,8 +6,15 @@ test("shows the highway-first planner", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Highway restroom stops" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Plan stops" })).toBeVisible();
   await expect(
-    page.getByRole("region", { name: "Restroom stops" }).getByRole("button", { name: /Expressway Food Plaza/ }),
+    page.getByRole("region", { name: "Restroom stops" }).getByRole("button", { name: /Shree Datta Snacks/ }),
   ).toBeVisible();
+
+  await page.getByLabel("Start").fill("Hyderabad");
+  await page.getByLabel("Destination").fill("Vijayawada");
+  await page.getByLabel("Highway").fill("NH-65");
+  await page.getByRole("button", { name: "Plan stops" }).click();
+
+  await expect(page.getByRole("region", { name: "Restroom stops" }).getByText("7 Midway Plaza")).toBeVisible();
 });
 
 test("city-only mode asks for a destination", async ({ page }) => {

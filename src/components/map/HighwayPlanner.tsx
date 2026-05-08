@@ -35,7 +35,7 @@ export function HighwayPlanner() {
   const [highwayName, setHighwayName] = useState("Mumbai-Pune Expressway");
   const [isInsideCity, setIsInsideCity] = useState(true);
   const [searched, setSearched] = useState(true);
-  const [selectedStopId, setSelectedStopId] = useState("mumbai-pune-food-plaza");
+  const [selectedStopId, setSelectedStopId] = useState("shree-datta-snacks-mumbai-pune");
 
   const response = useMemo(
     () =>
@@ -55,7 +55,7 @@ export function HighwayPlanner() {
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSearched(true);
-    setSelectedStopId(response.stops[0]?.id ?? "");
+    setSelectedStopId(response.stops[0]?.id ?? "shree-datta-snacks-mumbai-pune");
   }
 
   function handleCityOnly() {
@@ -70,7 +70,7 @@ export function HighwayPlanner() {
     setIsInsideCity(false);
     setHighwayName("NH48");
     setSearched(true);
-    setSelectedStopId(response.stops[0]?.id ?? "mumbai-pune-food-plaza");
+    setSelectedStopId(response.stops[0]?.id ?? "shree-datta-snacks-mumbai-pune");
   }
 
   return (
