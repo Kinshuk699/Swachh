@@ -1,0 +1,33 @@
+brand_name,region,proxy_type,default_confidence,notes
+McDonald's,Pan-India,qsr,0.76,International QSR baseline for premium highway food courts and fuel stations
+Burger King,Pan-India,qsr,0.74,International QSR baseline for premium highway food courts and fuel stations
+KFC,Pan-India,qsr,0.72,International QSR baseline for premium highway food courts and fuel stations
+Pizza Hut,Pan-India,qsr,0.7,International QSR baseline for premium highway food courts and fuel stations
+Costa Coffee,Pan-India,cafe,0.72,Cafe proxy for premium wayside amenities
+Cube Stop,Pan-India,wayside_amenity,0.9,Dedicated Wash Stop with staffed restroom operations
+PATH Recharge,Pan-India,wayside_amenity,0.88,Premium wayside amenities on expressway corridors
+Village Food Courts,Pan-India,food_plaza,0.86,Large mall-like wayside amenities with premium restrooms
+Shell Select,Pan-India,fuel_cafe,0.78,Clean fuel station restroom proxy with snacks and cafe
+Shell Cafe,Pan-India,fuel_cafe,0.78,Clean fuel station restroom proxy with snacks and cafe
+Jio-bp,Pan-India,fuel_station,0.8,Modern mobility station with regularly sanitized washrooms
+Wild Bean Cafe,Pan-India,fuel_cafe,0.78,Cafe attached to Jio-bp style mobility stations
+Indian Oil Swagat,Pan-India,fuel_wayside,0.76,Flagship wayside amenity and COCO pump restroom proxy
+BPCL Ghar,Pan-India,fuel_wayside,0.76,One Stop Trucker Shop and value-added rest stop proxy
+Reliance,Pan-India,fuel_station,0.78,Frequent road-tripper proxy for maintained standalone washrooms
+Nayara Energy,Pan-India,fuel_station,0.78,Frequent road-tripper proxy for maintained standalone washrooms
+Hotel Highway King,North & West India,restaurant_proxy,0.86,Family highway restaurant with parking and reliable restrooms
+Honest Restaurant,North & West India,restaurant_proxy,0.82,Gujarat highway chain with air-conditioned family facilities
+Gallops Food Plaza,North & West India,food_plaza,0.86,Large organized Gujarat food plaza with maintained lavatory blocks
+SN Highway Food Mall,North & West India,food_plaza,0.84,Organized Gujarat food mall with maintained lavatory blocks
+Haldiram's,North & West India,restaurant_proxy,0.78,Organized family restaurant proxy on North Indian highways
+Nirula's,North & West India,restaurant_proxy,0.74,Historic organized stop on North Indian routes
+Bikanervala,North & West India,restaurant_proxy,0.76,Organized family restaurant proxy on North Indian highways
+Cheetal Grand,North & West India,food_plaza,0.88,Known family stop on NH-58 with reliable sanitation
+Shree Rathnam,North & West India,restaurant_proxy,0.74,Vegetarian family dining proxy on Delhi/NCR highway routes
+Shree Datta Snacks,North & West India,restaurant_proxy,0.82,Premium vegetarian highway stop proxy in Maharashtra corridors
+Vithal Kamats,North & West India,restaurant_proxy,0.8,Premium vegetarian highway stop proxy in Maharashtra corridors
+PIK N GO,South India,restaurant_proxy,0.82,Sanitized washroom and EV charging proxy on major South India routes
+Adyar Ananda Bhavan,South India,restaurant_proxy,0.82,A2B organized highway dining proxy in Tamil Nadu
+Kamat Lokaruchi,South India,restaurant_proxy,0.82,Organized stop on Bengaluru-Mysore and Bengaluru-Coorg routes
+Azad Hind Dhaba,East & Central India,restaurant_proxy,0.78,Organized family dhaba chain on NH-19 routes
+National Highway Dhaba,North-East India,restaurant_proxy,0.82,Trusted organized stop on Guwahati-Shillong route

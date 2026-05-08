@@ -1,0 +1,15 @@
+name,region,proxy_type,highway_context,route_context,locality_hint,default_confidence,notes
+Lavato,South India,premium_lavatory,NH-44,Krishnagiri toll plaza,Krishnagiri,0.95,Premium AC lavatory service near toll plaza
+7 Midway Plaza,South India,food_plaza,NH-65,Hyderabad-Vijayawada,Suryapet corridor,0.9,Large food court praised for clean toilets
+Raju Gari Thota,South India,food_plaza,NH-65,Hyderabad-Vijayawada,Vijayawada corridor,0.86,Highly rated clean stop on Hyderabad-Vijayawada stretch
+Big Bay India,South India,food_plaza,NH-44,Bengaluru Airport corridor,Devanahalli,0.86,Large highway food mall with hygienic restroom proxy
+Hotel Highway King,North & West India,restaurant_proxy,NH-48,Delhi-Jaipur and Jaipur-Ajmer,Neemrana Bagru Shahpura Kishangarh,0.86,Sprawling family restaurant locations with parking and spotless restrooms
+Cheetal Grand,North & West India,food_plaza,NH-58,Delhi-Haridwar,Khatauli,0.88,Known family stop with reliable sanitation
+Gallops Food Plaza,North & West India,food_plaza,Gujarat highways,Rajkot-Ahmedabad,Gujarat,0.86,Large organized food plaza with maintained lavatory blocks
+SN Highway Food Mall,North & West India,food_plaza,Gujarat highways,Rajkot-Ahmedabad,Gujarat,0.84,Organized highway food mall with maintained lavatory blocks
+Shree Datta Snacks,North & West India,restaurant_proxy,Mumbai-Pune Expressway,Mumbai-Pune,Khalapur Lonavala,0.82,Premium vegetarian stop with separate clean washrooms
+Vithal Kamats,North & West India,restaurant_proxy,Panvel-Goa highway,Panvel-Goa,Konkan corridor,0.8,Vegetarian highway stop with clean washrooms
+Hotel Kamat Lokaruchi,South India,restaurant_proxy,Bengaluru-Mysore route,Bengaluru-Mysore,Ramanagara,0.84,Traditional but organized stop with reliable facilities
+National Highway Dhaba,North-East India,restaurant_proxy,Guwahati-Shillong route,Guwahati-Shillong,Nongpoh,0.82,Trusted organized stop for hygienic local food and clean restrooms
+Gargi Surya Vihar,East & Central India,restaurant_proxy,NH-19,Aurangabad Bihar,Aurangabad Bihar,0.84,Road-tripper recommended stop specifically for clean restrooms
+Azad Hind Dhaba,East & Central India,restaurant_proxy,NH-19,Kolkata outbound routes,West Bengal,0.78,Organized family-friendly dhaba chain
