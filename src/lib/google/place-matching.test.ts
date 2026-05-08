@@ -45,4 +45,23 @@ describe("Google place matching", () => {
       restroomConfidence: 0.95,
     });
   });
+
+  it("throws when google result id is empty", () => {
+    const bad: GooglePlaceTextSearchResult = { id: "" };
+    expect(() => toStoredPlaceMatch(bad, {})).toThrow("Google place result is missing id");
+  });
+
+  it("does not retain Google-owned fields on the stored match", () => {
+    const googleResult: GooglePlaceTextSearchResult = {
+      id: "ChIJ-example",
+      displayName: { text: "Lavato Premium Toilets" },
+      formattedAddress: "NH-44, Tamil Nadu",
+      rating: 4.6,
+    };
+
+    const stored = toStoredPlaceMatch(googleResult, { seedName: "Lavato" });
+    expect((stored as any).displayName).toBeUndefined();
+    expect((stored as any).formattedAddress).toBeUndefined();
+    expect((stored as any).rating).toBeUndefined();
+  });
 });
