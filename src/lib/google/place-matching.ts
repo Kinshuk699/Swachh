@@ -1,3 +1,5 @@
+import { buildGoogleSearchText } from "@/lib/seeds/seed-records";
+
 export type PlaceSearchSeed = {
   name: string;
   highwayContext?: string;
@@ -7,8 +9,8 @@ export type PlaceSearchSeed = {
 
 export type GooglePlaceTextSearchRequest = {
   textQuery: string;
-  regionCode: string;
-  includedType: string;
+  regionCode: "IN";
+  includedType: "establishment";
 };
 
 export type GooglePlaceTextSearchResult = {
@@ -19,30 +21,24 @@ export type GooglePlaceTextSearchResult = {
 };
 
 export type StoredPlaceMatchInput = {
-  seedName?: string;
-  highwayContext?: string;
-  routeContext?: string;
-  restroomConfidence?: number;
+  seedName: string;
+  highwayContext: string;
+  routeContext: string;
+  restroomConfidence: number;
 };
 
 export type StoredPlaceMatch = StoredPlaceMatchInput & {
   placeId: string;
 };
 
-function buildGoogleSearchText(seed: PlaceSearchSeed): string {
-  const parts: string[] = [];
-  if (seed.name) parts.push(seed.name.trim());
-  if (seed.highwayContext) parts.push(seed.highwayContext.trim());
-  if (seed.routeContext) parts.push(seed.routeContext.trim());
-  if (seed.localityHint) parts.push(seed.localityHint.trim());
-  // Append country bias for better regional results
-  parts.push("India");
-  return parts.join(" ");
-}
-
 export function buildTextSearchRequest(seed: PlaceSearchSeed): GooglePlaceTextSearchRequest {
   return {
-    textQuery: buildGoogleSearchText(seed),
+    textQuery: buildGoogleSearchText({
+      name: seed.name,
+      highwayContext: seed.highwayContext ?? "",
+      routeContext: seed.routeContext ?? "",
+      localityHint: seed.localityHint ?? "",
+    }),
     regionCode: "IN",
     includedType: "establishment",
   };

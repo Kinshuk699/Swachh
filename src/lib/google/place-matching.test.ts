@@ -48,7 +48,9 @@ describe("Google place matching", () => {
 
   it("throws when google result id is empty", () => {
     const bad: GooglePlaceTextSearchResult = { id: "" };
-    expect(() => toStoredPlaceMatch(bad, {})).toThrow("Google place result is missing id");
+    expect(() => toStoredPlaceMatch(bad, { seedName: "", highwayContext: "", routeContext: "", restroomConfidence: 0 })).toThrow(
+      "Google place result is missing id",
+    );
   });
 
   it("does not retain Google-owned fields on the stored match", () => {
@@ -59,7 +61,7 @@ describe("Google place matching", () => {
       rating: 4.6,
     };
 
-    const stored = toStoredPlaceMatch(googleResult, { seedName: "Lavato" });
+    const stored = toStoredPlaceMatch(googleResult, { seedName: "Lavato", highwayContext: "NH-44", routeContext: "Krishnagiri toll plaza", restroomConfidence: 0.9 });
     expect((stored as any).displayName).toBeUndefined();
     expect((stored as any).formattedAddress).toBeUndefined();
     expect((stored as any).rating).toBeUndefined();
