@@ -70,12 +70,36 @@ describe("GET /api/admin/submissions", () => {
   it("reports an unconfigured admin queue without querying Supabase", async () => {
     process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
     delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const { addLocalPendingRestroomSubmission } = await import("@/lib/admin/submissions");
+    addLocalPendingRestroomSubmission({
+      name: "Demo Toll Stop",
+      category: "toll_plaza",
+      highwayName: "Mumbai-Pune Expressway",
+      routeContext: "Khalapur service corridor",
+      latitude: 18.765,
+      longitude: 73.377,
+      freeAccess: true,
+      womenFriendly: false,
+      accessible: false,
+      cleanlinessRating: null,
+      safetyNotes: null,
+      googlePlaceId: null,
+    });
     const { GET } = await import("./route");
 
     const response = await GET();
 
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toEqual({ storageConfigured: false, submissions: [] });
+    await expect(response.json()).resolves.toMatchObject({
+      storageConfigured: false,
+      submissions: [
+        {
+          name: "Demo Toll Stop",
+          highwayName: "Mumbai-Pune Expressway",
+          status: "pending",
+        },
+      ],
+    });
     expect(createClientSpy).not.toHaveBeenCalled();
   });
 });

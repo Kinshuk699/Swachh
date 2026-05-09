@@ -10,6 +10,7 @@ vi.mock("@supabase/supabase-js", () => ({
 
 const originalSupabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const originalSupabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+const originalServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 describe("POST /api/restrooms/submissions", () => {
   afterEach(() => {
@@ -17,11 +18,13 @@ describe("POST /api/restrooms/submissions", () => {
     vi.clearAllMocks();
     process.env.NEXT_PUBLIC_SUPABASE_URL = originalSupabaseUrl;
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = originalSupabaseAnonKey;
+    process.env.SUPABASE_SERVICE_ROLE_KEY = originalServiceRoleKey;
   });
 
   it("stores a pending highway restroom submission", async () => {
     process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "anon-key";
+    process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role-key";
     insertSpy.mockResolvedValue({ error: null });
     const { POST } = await import("./route");
 
@@ -63,6 +66,39 @@ describe("POST /api/restrooms/submissions", () => {
       google_place_id: "google-place-id-123",
       status: "pending",
     });
+  });
+
+  it("uses a local moderation queue when live admin storage is not configured", async () => {
+    delete process.env.NEXT_PUBLIC_SUPABASE_URL;
+    delete process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const { POST } = await import("./route");
+
+    const response = await POST(
+      new Request("http://localhost/api/restrooms/submissions", {
+        method: "POST",
+        body: JSON.stringify({
+          name: "Demo Toll Stop",
+          category: "toll_plaza",
+          latitude: 18.765,
+          longitude: 73.377,
+          highwayName: "Mumbai-Pune Expressway",
+        }),
+      }),
+    );
+    const { listLocalPendingRestroomSubmissions } = await import("@/lib/admin/submissions");
+
+    expect(response.status).toBe(201);
+    await expect(response.json()).resolves.toEqual({ ok: true, status: "pending", storage: "local_dev" });
+    expect(listLocalPendingRestroomSubmissions()).toMatchObject([
+      {
+        name: "Demo Toll Stop",
+        category: "toll_plaza",
+        highwayName: "Mumbai-Pune Expressway",
+        status: "pending",
+      },
+    ]);
+    expect(insertSpy).not.toHaveBeenCalled();
   });
 
   it("rejects submissions without highway context", async () => {

@@ -23,6 +23,8 @@ export type PendingSubmissionQueue = {
   submissions: PendingRestroomSubmission[];
 };
 
+export type PendingRestroomSubmissionDraft = Omit<PendingRestroomSubmission, "id" | "status" | "createdAt">;
+
 type PendingSubmissionRow = {
   id: string;
   name: string;
@@ -57,12 +59,16 @@ const pendingSubmissionColumns = [
   "created_at",
 ].join(",");
 
+declare global {
+  var swachhLocalPendingRestroomSubmissions: PendingRestroomSubmission[] | undefined;
+}
+
 export async function listPendingRestroomSubmissions(): Promise<PendingSubmissionQueue> {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
   if (!supabaseUrl || !serviceRoleKey) {
-    return { storageConfigured: false, submissions: [] };
+    return { storageConfigured: false, submissions: listLocalPendingRestroomSubmissions() };
   }
 
   const supabase = createClient(supabaseUrl, serviceRoleKey, {
@@ -84,6 +90,27 @@ export async function listPendingRestroomSubmissions(): Promise<PendingSubmissio
   };
 }
 
+export function addLocalPendingRestroomSubmission(submission: PendingRestroomSubmissionDraft): PendingRestroomSubmission {
+  const pendingSubmission: PendingRestroomSubmission = {
+    ...submission,
+    id: `local-${createLocalSubmissionId()}`,
+    status: "pending",
+    createdAt: new Date().toISOString(),
+  };
+
+  localPendingRestroomSubmissions().unshift(pendingSubmission);
+
+  return pendingSubmission;
+}
+
+export function listLocalPendingRestroomSubmissions(): PendingRestroomSubmission[] {
+  return [...localPendingRestroomSubmissions()];
+}
+
+export function clearLocalPendingRestroomSubmissions() {
+  globalThis.swachhLocalPendingRestroomSubmissions = [];
+}
+
 function toPendingSubmission(row: PendingSubmissionRow): PendingRestroomSubmission {
   return {
     id: row.id,
@@ -102,4 +129,18 @@ function toPendingSubmission(row: PendingSubmissionRow): PendingRestroomSubmissi
     status: "pending",
     createdAt: row.created_at,
   };
+}
+
+function localPendingRestroomSubmissions(): PendingRestroomSubmission[] {
+  globalThis.swachhLocalPendingRestroomSubmissions ??= [];
+
+  return globalThis.swachhLocalPendingRestroomSubmissions;
+}
+
+function createLocalSubmissionId(): string {
+  if (typeof globalThis.crypto?.randomUUID === "function") {
+    return globalThis.crypto.randomUUID();
+  }
+
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }

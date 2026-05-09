@@ -20,7 +20,9 @@ export default async function AdminPage() {
 
         {!queue.storageConfigured ? (
           <div className="mb-4 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-            Admin queue storage is not configured. Add the server-only Supabase service role key to review live submissions.
+            {queue.submissions.length > 0
+              ? "Using the local dev moderation queue. Add the server-only Supabase service role key to review live submissions."
+              : "Admin queue storage is not configured. Add the server-only Supabase service role key to review live submissions."}
           </div>
         ) : null}
 
