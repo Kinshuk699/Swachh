@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { buildRouteSearchResponse } from "./route-search";
 
 describe("buildRouteSearchResponse", () => {
-  it("returns atlas stops while still asking dense-city users for trip context", () => {
+  it("returns seeded highway stops while still asking dense-city users for trip context", () => {
     const response = buildRouteSearchResponse({
       origin: "Bandra West, Mumbai",
       destination: "",
@@ -17,6 +17,7 @@ describe("buildRouteSearchResponse", () => {
     expect(response.stops.map((stop) => stop.id)).toEqual([
       "mumbai-pune-food-plaza",
       "nh48-toll-plaza",
+      "lavato-krishnagiri",
       "city-edge-fuel-station",
     ]);
     expect(response.stops).not.toContainEqual(expect.objectContaining({ id: "dense-city-mall" }));

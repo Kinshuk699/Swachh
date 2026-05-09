@@ -93,7 +93,7 @@ export const highwaySearchCorridors: HighwaySearchCorridor[] = [
   corridor("sg-highway-ahmedabad", "Sarkhej-Gandhinagar Highway", "Ahmedabad-Gandhinagar", "North & West India", [[23.02, 72.50], [23.08, 72.53], [23.21, 72.64]]),
   corridor("mumbai-pune-expressway", "Mumbai-Pune Expressway", "Mumbai-Pune", "North & West India", [[18.83, 73.25], [18.76, 73.37], [18.65, 73.64]]),
   corridor("panvel-goa-nh66", "NH-66", "Panvel-Goa", "North & West India", [[18.99, 73.11], [17.58, 73.52], [15.49, 73.82]]),
-  corridor("nh44-krishnagiri", "NH-44", "Krishnagiri toll plaza", "South India", [[12.84, 78.09], [12.52, 78.21], [12.26, 78.37]]),
+  corridor("nh44-krishnagiri", "NH-44", "Krishnagiri toll plaza", "South India", [[12.84, 78.09], [12.5733, 78.1692], [12.52, 78.21], [12.26, 78.37]]),
   corridor("hyderabad-vijayawada-nh65", "NH-65", "Hyderabad-Vijayawada", "South India", [[17.26, 78.75], [17.14, 79.62], [16.68, 80.23]]),
   corridor("bengaluru-mysuru", "Bengaluru-Mysuru highway", "Bengaluru-Mysuru", "South India", [[12.73, 77.28], [12.72, 77.47], [12.64, 77.85]]),
   corridor("bengaluru-coorg", "Bengaluru-Coorg route", "Bengaluru-Coorg", "South India", [[12.73, 77.28], [12.42, 76.69], [12.42, 75.74]]),

@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -7,8 +7,17 @@ import { MapCanvas } from "./MapCanvas";
 
 vi.mock("@vis.gl/react-google-maps", () => ({
   APIProvider: ({ children }: { children: ReactNode }) => <div data-testid="api-provider">{children}</div>,
-  Map: ({ children }: { children: ReactNode }) => <div data-testid="google-map">{children}</div>,
-  Marker: ({ title }: { title?: string }) => <div data-testid="map-marker">{title}</div>,
+  Map: ({ children, styles }: { children: ReactNode; styles?: unknown }) => (
+    <div data-has-styles={Array.isArray(styles) ? "true" : "false"} data-testid="google-map">
+      {children}
+    </div>
+  ),
+  Marker: ({ icon, onClick, title }: { icon?: string; onClick?: () => void; title?: string }) => (
+    <button data-icon={icon} data-testid="map-marker" onClick={onClick} type="button">
+      {title}
+    </button>
+  ),
+  InfoWindow: ({ children }: { children: ReactNode }) => <div data-testid="info-window">{children}</div>,
   Polyline: ({ encodedPath, strokeColor }: { encodedPath?: string; strokeColor?: string }) => (
     <div data-encoded-path={encodedPath} data-stroke-color={strokeColor} data-testid="route-polyline" />
   ),
@@ -19,10 +28,12 @@ describe("MapCanvas", () => {
 
   afterEach(() => {
     process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY = originalApiKey;
+    vi.unstubAllGlobals();
   });
 
-  it("keeps the Swachh atlas when a live route polyline is available", () => {
+  it("renders the normal Google map when a browser key is configured", async () => {
     process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY = "browser-key";
+    stubPreviewFetch();
 
     render(
       <MapCanvas
@@ -33,48 +44,56 @@ describe("MapCanvas", () => {
       />,
     );
 
+    expect(screen.getByTestId("google-map")).toBeTruthy();
+    expect(screen.queryByRole("img", { name: /swachh national highway atlas/i })).toBeNull();
+    expect(screen.getByTestId("google-map").getAttribute("data-has-styles")).toBe("true");
+    await waitFor(() => expect(screen.getByText(/Preview resolved/i)).toBeTruthy());
+  });
+
+  it("shows a Google Maps configuration message when the browser key is missing", () => {
+    process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY = "";
+
+    render(
+      <MapCanvas
+        stops={sampleHighwayStops.slice(0, 1)}
+        selectedStopId="mumbai-pune-food-plaza"
+        routePolyline="encoded-route"
+        onSelectStop={() => {}}
+      />,
+    );
+
+    expect(screen.getByText("Google Maps key needed")).toBeTruthy();
     expect(screen.queryByTestId("google-map")).toBeNull();
-    const atlas = screen.getByRole("img", { name: /swachh national highway atlas/i });
-    expect(atlas).toBeTruthy();
-    expect(atlas.getAttribute("viewBox")).toBe("0 0 390 430");
-    expect(screen.getByLabelText("Planned route corridor")).toBeTruthy();
-    expect(screen.getByTestId("india-mainland-outline").getAttribute("d")).toContain("C210 342 193 369 172 407");
-    expect(screen.getByTestId("india-northeast-outline").getAttribute("d")).toContain("C344 151 366 169 360 190");
   });
 
-  it("shows a route corridor in map preview mode", () => {
-    process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY = "";
+  it("renders paid premium Google places as gold markers and opens a details window", async () => {
+    process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY = "browser-key";
+    stubPreviewFetch();
 
     render(
       <MapCanvas
-        stops={sampleHighwayStops.slice(0, 1)}
-        selectedStopId="mumbai-pune-food-plaza"
-        routePolyline="encoded-route"
+        stops={sampleHighwayStops.filter((stop) => stop.id === "lavato-krishnagiri")}
+        selectedStopId="lavato-krishnagiri"
         onSelectStop={() => {}}
       />,
     );
 
-    expect(screen.getByLabelText("Planned route corridor")).toBeTruthy();
-  });
-
-  it("renders a branded national highway atlas with seeded corridors and stop markers", () => {
-    process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY = "";
-
-    render(
-      <MapCanvas
-        stops={sampleHighwayStops}
-        selectedStopId="mumbai-pune-food-plaza"
-        onSelectStop={() => {}}
-      />,
-    );
-
-    expect(screen.getByRole("img", { name: /swachh national highway atlas/i })).toBeTruthy();
-    expect(screen.getByTestId("india-mainland-outline").getAttribute("d")).toContain("C210 342 193 369 172 407");
-    expect(screen.getByTestId("india-mainland-outline").getAttribute("stroke-width")).toBe("3");
-    expect(screen.getByTestId("india-northeast-outline").getAttribute("d")).toContain("C344 151 366 169 360 190");
-    expect(screen.getByText("Mumbai-Pune Expressway")).toBeTruthy();
-    expect(screen.getByText("NH48")).toBeTruthy();
-    expect(screen.getByText("Women-friendly verified")).toBeTruthy();
-    expect(screen.getAllByRole("button").map((button) => button.getAttribute("aria-label"))).toContain("Expressway Food Plaza");
+    const marker = screen.getByTestId("map-marker");
+    expect(marker.textContent).toContain("LAVATO - A Premium Lounge");
+    expect(marker.getAttribute("data-icon")).toContain("yellow-dot");
+    fireEvent.click(marker);
+    expect(screen.getByTestId("info-window")).toBeTruthy();
+    expect(screen.getByText("Paid premium lounge")).toBeTruthy();
+    expect(screen.getByText("Monday: 8:00 AM - 10:00 PM")).toBeTruthy();
+    await waitFor(() => expect(screen.getByText(/Preview resolved/i)).toBeTruthy());
   });
 });
+
+function stubPreviewFetch() {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () =>
+      new Response(JSON.stringify({ places: [], searchedJobs: 0, totalJobs: 2_808, capped: true }), { status: 200 }),
+    ),
+  );
+}

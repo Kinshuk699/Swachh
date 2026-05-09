@@ -5,12 +5,49 @@ export type HighwayStop = CandidateStop & {
   lng: number;
   highway: string;
   locality: string;
-  priceLabel: "Free" | "Customer access" | "Unknown";
+  priceLabel: "Free" | "Customer access" | "Paid" | "Unknown";
   facilities: string[];
   placeId?: string;
+  googleMapsUri?: string;
+  googlePlaceName?: string;
+  openingHoursText?: string[];
+  isPaidPremium?: boolean;
 };
 
 export const sampleHighwayStops: HighwayStop[] = [
+  {
+    id: "lavato-krishnagiri",
+    name: "LAVATO - A Premium Lounge",
+    category: "public_restroom",
+    distanceFromRouteMeters: 350,
+    distanceFromHighwayMeters: 180,
+    detourMinutes: 4,
+    isEndpointStagingArea: false,
+    isInsideDenseCity: false,
+    source: "google_place",
+    confidence: 0.95,
+    openNow: true,
+    verified: true,
+    lat: 12.5732978,
+    lng: 78.1692122,
+    highway: "NH-44",
+    locality: "Krishnagiri toll plaza corridor",
+    priceLabel: "Paid",
+    facilities: ["Paid premium lounge", "AC washroom", "Google verified", "Highway corridor"],
+    placeId: "ChIJgwabcfrNrTsRxuE8JnwhFL8",
+    googleMapsUri: "https://maps.google.com/?cid=13768666777879634374",
+    googlePlaceName: "LAVATO - A Premium Lounge",
+    openingHoursText: [
+      "Monday: 8:00 AM - 10:00 PM",
+      "Tuesday: Closed",
+      "Wednesday: 8:00 AM - 10:00 PM",
+      "Thursday: 8:00 AM - 10:00 PM",
+      "Friday: 8:00 AM - 10:00 PM",
+      "Saturday: 8:00 AM - 10:00 PM",
+      "Sunday: 8:00 AM - 10:00 PM",
+    ],
+    isPaidPremium: true,
+  },
   {
     id: "mumbai-pune-food-plaza",
     name: "Expressway Food Plaza",

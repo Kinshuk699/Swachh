@@ -1,8 +1,10 @@
 "use client";
 
-import { CheckCircle2, Coffee, Fuel, MapPinned, ShieldCheck } from "lucide-react";
+import { APIProvider, InfoWindow, Map, Marker } from "@vis.gl/react-google-maps";
+import { AlertTriangle, ExternalLink, Loader2, MapPinned, ShieldCheck } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 
-import { sampleHighwayCorridors } from "@/lib/highways/sample-corridors";
+import type { GooglePlaceDetails } from "@/lib/google/places";
 import type { HighwayStop } from "@/lib/restrooms/sample-stops";
 
 type MapCanvasProps = {
@@ -12,159 +14,248 @@ type MapCanvasProps = {
   onSelectStop: (stopId: string) => void;
 };
 
-const atlasStopPositions: Record<string, { left: string; top: string }> = {
-  "mumbai-pune-food-plaza": { left: "41%", top: "61%" },
-  "nh48-toll-plaza": { left: "39%", top: "46%" },
-  "city-edge-fuel-station": { left: "44%", top: "64%" },
-  "dense-city-mall": { left: "36%", top: "57%" },
+type PreviewResponse = {
+  places?: HighwayStop[];
+  searchedJobs?: number;
+  totalJobs?: number;
+  capped?: boolean;
 };
 
-const fallbackAtlasPositions = [
-  { left: "38%", top: "36%" },
-  { left: "48%", top: "48%" },
-  { left: "60%", top: "58%" },
-  { left: "72%", top: "44%" },
+const indiaCenter = { lat: 22.9734, lng: 78.6569 };
+const standardMarkerIconUrl = "https://maps.google.com/mapfiles/ms/icons/red-dot.png";
+const premiumMarkerIconUrl = "https://maps.google.com/mapfiles/ms/icons/yellow-dot.png";
+
+const highwayFocusedMapStyles = [
+  {
+    featureType: "road.highway",
+    elementType: "geometry",
+    stylers: [{ color: "#4b5563" }, { visibility: "simplified" }],
+  },
+  {
+    featureType: "road.highway.controlled_access",
+    elementType: "geometry",
+    stylers: [{ color: "#111827" }, { visibility: "on" }],
+  },
+  {
+    featureType: "road.highway",
+    elementType: "labels.text.fill",
+    stylers: [{ color: "#111827" }],
+  },
+  {
+    featureType: "road.highway",
+    elementType: "labels.text.stroke",
+    stylers: [{ color: "#f8fafc" }],
+  },
 ];
 
-const indiaMainlandOutlinePath =
-  "M151 22 C164 28 175 34 186 45 C196 56 199 68 210 75 C222 83 235 82 244 94 C253 105 257 119 270 126 C283 133 292 144 297 159 C302 174 297 190 284 198 C272 206 257 203 246 211 C235 218 230 231 234 245 C239 263 230 279 216 290 C210 342 193 369 172 407 C161 421 143 420 132 405 C122 391 121 370 114 351 C108 333 96 320 87 306 C76 289 68 273 73 254 C78 237 69 223 54 212 C39 201 31 188 36 172 C41 157 59 154 70 143 C81 132 84 118 85 103 C86 89 75 79 80 66 C86 52 104 54 118 47 C132 40 139 27 151 22 Z";
+export function MapCanvas({ stops, routePolyline, onSelectStop }: MapCanvasProps) {
+  const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+  const [previewStops, setPreviewStops] = useState<HighwayStop[]>([]);
+  const [previewMeta, setPreviewMeta] = useState<Pick<PreviewResponse, "searchedJobs" | "totalJobs" | "capped">>({});
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [activeInfoStopId, setActiveInfoStopId] = useState<string | null>(null);
+  const [placeDetailsById, setPlaceDetailsById] = useState<Record<string, GooglePlaceDetails>>({});
 
-const indiaNortheastOutlinePath =
-  "M270 128 C287 121 309 126 325 136 C344 151 366 169 360 190 C353 211 329 212 310 202 C294 194 282 178 263 173 C250 170 241 162 244 151 C248 140 258 133 270 128 Z";
+  useEffect(() => {
+    if (!apiKey) {
+      return;
+    }
 
-export function MapCanvas({ stops, selectedStopId, routePolyline, onSelectStop }: MapCanvasProps) {
-  return (
-    <div className="relative h-full min-h-[420px] overflow-hidden bg-[#08090a] text-stone-100">
-      <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(255,255,255,0.045)_1px,transparent_1px),linear-gradient(0deg,rgba(255,255,255,0.045)_1px,transparent_1px)] bg-[size:44px_44px]" />
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_22%_24%,rgba(255,178,63,0.16),transparent_30%),radial-gradient(circle_at_78%_72%,rgba(100,211,154,0.14),transparent_34%)]" />
-      <svg
-        aria-label="Swachh national highway atlas"
-        className="absolute inset-0 h-full w-full"
-        preserveAspectRatio="xMidYMid meet"
-        role="img"
-        viewBox="0 0 390 430"
-      >
-        <defs>
-          <clipPath id="india-atlas-clip">
-            <path d={indiaMainlandOutlinePath} />
-            <path d={indiaNortheastOutlinePath} />
-          </clipPath>
-        </defs>
-        <path
-          d={indiaMainlandOutlinePath}
-          data-testid="india-mainland-outline"
-          fill="rgba(255,255,255,0.07)"
-          stroke="rgba(255,255,255,0.34)"
-          strokeWidth="3"
-        />
-        <path
-          d={indiaNortheastOutlinePath}
-          data-testid="india-northeast-outline"
-          fill="rgba(255,255,255,0.07)"
-          stroke="rgba(255,255,255,0.34)"
-          strokeWidth="3"
-        />
-        <path
-          d="M238 151 C248 149 257 151 267 156"
-          fill="none"
-          stroke="rgba(255,255,255,0.12)"
-          strokeLinecap="round"
-          strokeWidth="2"
-        />
-        <g clipPath="url(#india-atlas-clip)">
-          {sampleHighwayCorridors.map((corridor) => (
-            <g key={corridor.id}>
-              <path
-                d={corridor.path}
-                fill="none"
-                stroke={corridor.color}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeOpacity="0.24"
-                strokeWidth="7"
-              />
-              <path
-                d={corridor.path}
-                fill="none"
-                stroke={corridor.color}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeOpacity="0.86"
-                strokeWidth={corridor.coverageStatus === "strong" ? 3 : 2.5}
-              />
-            </g>
-          ))}
-        </g>
-        {sampleHighwayCorridors.map((corridor) => (
-          <g key={`${corridor.id}-label`}>
-            <text fill="#f7f3e8" fontSize="8" fontWeight="600" x={corridor.label.x} y={corridor.label.y}>
-              {corridor.name}
-            </text>
-          </g>
-        ))}
-        {routePolyline ? (
-          <path
-            aria-label="Planned route corridor"
-            d="M116 254 C145 267 175 258 226 250"
-            fill="none"
-            role="img"
-            stroke="#fff4d6"
-            strokeDasharray="8 8"
-            strokeLinecap="round"
-            strokeWidth="7"
-            clipPath="url(#india-atlas-clip)"
-          />
-        ) : null}
-      </svg>
+    let cancelled = false;
+    setPreviewLoading(true);
 
-      <div className="absolute left-4 top-4 max-w-[min(22rem,calc(100%-2rem))] rounded-lg border border-white/10 bg-black/45 px-4 py-3 shadow-[0_18px_50px_rgba(0,0,0,0.34)] backdrop-blur-md">
-        <div className="flex items-center gap-2 text-sm font-semibold text-stone-50">
-          <MapPinned className="size-4 text-amber-300" aria-hidden="true" />
-          National highway atlas
+    fetch("/api/google-curated-places/preview?limit=40")
+      .then((response) => (response.ok ? response.json() : null))
+      .then((body: PreviewResponse | null) => {
+        if (cancelled || !body) {
+          return;
+        }
+
+        setPreviewStops(body.places ?? []);
+        setPreviewMeta({ searchedJobs: body.searchedJobs, totalJobs: body.totalJobs, capped: body.capped });
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setPreviewStops([]);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setPreviewLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [apiKey]);
+
+  const mapStops = useMemo(() => dedupeStops([...stops, ...previewStops]), [previewStops, stops]);
+  const activeStop = mapStops.find((stop) => stop.id === activeInfoStopId) ?? null;
+  const activeDetails = activeStop?.placeId ? placeDetailsById[activeStop.placeId] : undefined;
+
+  useEffect(() => {
+    if (!activeStop?.placeId || activeStop.openingHoursText?.length || placeDetailsById[activeStop.placeId]) {
+      return;
+    }
+
+    let cancelled = false;
+
+    fetch(`/api/google/place-details?placeId=${encodeURIComponent(activeStop.placeId)}`)
+      .then((response) => (response.ok ? response.json() : null))
+      .then((details: GooglePlaceDetails | null) => {
+        if (cancelled || !details) {
+          return;
+        }
+
+        setPlaceDetailsById((current) => ({ ...current, [details.id]: details }));
+      })
+      .catch(() => undefined);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeStop, placeDetailsById]);
+
+  if (!apiKey) {
+    return (
+      <div className="flex h-full min-h-[420px] items-center justify-center bg-stone-100 px-6 text-stone-950">
+        <div className="max-w-md rounded-lg border bg-white p-5 shadow-sm">
+          <div className="flex items-center gap-2 font-medium">
+            <AlertTriangle className="size-5 text-amber-600" aria-hidden="true" />
+            Google Maps key needed
+          </div>
+          <p className="mt-2 text-sm text-stone-600">Add `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` to `.env.local` to render the normal Google Maps basemap.</p>
         </div>
-        <p className="mt-1 text-xs leading-5 text-stone-300">Seeded restroom stops and priority corridors are visible before route search.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative h-full min-h-[420px] overflow-hidden bg-stone-100">
+      <APIProvider apiKey={apiKey} language="en-IN" region="IN">
+        <Map
+          className="h-full min-h-[420px] w-full"
+          defaultCenter={indiaCenter}
+          defaultZoom={5}
+          fullscreenControl
+          gestureHandling="greedy"
+          mapTypeControl={false}
+          mapTypeId="roadmap"
+          streetViewControl={false}
+          styles={highwayFocusedMapStyles}
+        >
+          {mapStops.map((stop) => (
+            <Marker
+              key={stop.id}
+              clickable
+              icon={isPremiumPaidStop(stop) ? premiumMarkerIconUrl : standardMarkerIconUrl}
+              onClick={() => {
+                onSelectStop(stop.id);
+                setActiveInfoStopId(stop.id);
+              }}
+              position={{ lat: stop.lat, lng: stop.lng }}
+              title={stop.googlePlaceName ?? stop.name}
+            />
+          ))}
+
+          {activeStop ? (
+            <InfoWindow
+              onCloseClick={() => setActiveInfoStopId(null)}
+              position={{ lat: activeDetails?.location?.latitude ?? activeStop.lat, lng: activeDetails?.location?.longitude ?? activeStop.lng }}
+            >
+              <PlaceInfoWindow stop={activeStop} details={activeDetails} />
+            </InfoWindow>
+          ) : null}
+        </Map>
+      </APIProvider>
+
+      <div className="pointer-events-none absolute left-4 top-4 max-w-[min(24rem,calc(100%-2rem))] rounded-lg border bg-white/92 px-4 py-3 text-stone-950 shadow-sm backdrop-blur">
+        <div className="flex items-center gap-2 text-sm font-semibold">
+          <MapPinned className="size-4 text-red-600" aria-hidden="true" />
+          Google Maps highway view
+        </div>
+        <p className="mt-1 text-xs leading-5 text-stone-600">Normal Google basemap with darker highway styling and verified stop markers.</p>
+        <div className="mt-2 flex flex-wrap gap-2 text-[11px] font-medium">
+          <span className="rounded-full bg-red-100 px-2 py-1 text-red-800">Verified stop</span>
+          <span className="rounded-full bg-yellow-100 px-2 py-1 text-yellow-900">Paid premium</span>
+        </div>
       </div>
 
-      <div className="absolute bottom-4 left-4 right-4 flex flex-wrap gap-2 rounded-lg border border-white/10 bg-black/45 p-2 text-xs text-stone-200 shadow-[0_18px_50px_rgba(0,0,0,0.34)] backdrop-blur-md">
-        <span className="flex min-h-8 items-center gap-1.5 rounded-md border border-emerald-300/30 bg-emerald-300/10 px-2">
-          <ShieldCheck className="size-3.5 text-emerald-300" aria-hidden="true" />
-          Women-friendly verified
-        </span>
-        <span className="flex min-h-8 items-center gap-1.5 rounded-md border border-amber-300/30 bg-amber-300/10 px-2">
-          <Coffee className="size-3.5 text-amber-300" aria-hidden="true" />
-          Food plaza
-        </span>
-        <span className="flex min-h-8 items-center gap-1.5 rounded-md border border-cyan-300/30 bg-cyan-300/10 px-2">
-          <Fuel className="size-3.5 text-cyan-300" aria-hidden="true" />
-          Fuel stop
-        </span>
-        <span className="flex min-h-8 items-center gap-1.5 rounded-md border border-stone-300/20 bg-stone-100/10 px-2">
-          <CheckCircle2 className="size-3.5 text-stone-200" aria-hidden="true" />
-          Toll or public restroom
-        </span>
+      <div className="pointer-events-none absolute bottom-4 left-4 max-w-[min(26rem,calc(100%-2rem))] rounded-lg border bg-white/92 px-4 py-3 text-xs text-stone-700 shadow-sm backdrop-blur">
+        <div className="flex items-center gap-2 font-medium text-stone-950">
+          {previewLoading ? <Loader2 className="size-3.5 animate-spin" aria-hidden="true" /> : <ShieldCheck className="size-3.5 text-emerald-700" aria-hidden="true" />}
+          <span>{mapStops.length} map markers</span>
+        </div>
+        <p className="mt-1 leading-5">
+          {previewMeta.totalJobs
+            ? `Preview resolved ${previewMeta.searchedJobs ?? 0} of ${previewMeta.totalJobs} bounded Google searches. Full discovery is kept off auto-load to avoid surprise API spend.`
+            : routePolyline
+              ? "Route loaded. Click a marker for Google place details."
+              : "Click a marker for Google place details and opening hours."}
+        </p>
       </div>
-      {stops.map((stop, index) => {
-        const position = atlasStopPositions[stop.id] ?? fallbackAtlasPositions[index % fallbackAtlasPositions.length];
-        const selected = selectedStopId === stop.id;
-
-        return (
-          <button
-            key={stop.id}
-            type="button"
-            title={stop.name}
-            aria-label={stop.name}
-            onClick={() => onSelectStop(stop.id)}
-            className={`absolute flex h-11 w-11 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border text-white shadow-[0_0_0_6px_rgba(255,255,255,0.05),0_16px_34px_rgba(0,0,0,0.34)] transition duration-200 hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-200 focus-visible:ring-offset-2 focus-visible:ring-offset-black motion-reduce:transition-none ${
-              selected
-                ? "border-amber-100 bg-amber-400 text-slate-950"
-                : "border-white/40 bg-slate-950/80 hover:border-emerald-200 hover:bg-emerald-700"
-            }`}
-            style={position}
-          >
-            <MapPinned className="h-5 w-5" aria-hidden="true" />
-          </button>
-        );
-      })}
     </div>
   );
+}
+
+function PlaceInfoWindow({ stop, details }: { stop: HighwayStop; details?: GooglePlaceDetails }) {
+  const openingHours = details?.weekdayDescriptions.length ? details.weekdayDescriptions : (stop.openingHoursText ?? []);
+  const displayName = details?.displayName ?? stop.googlePlaceName ?? stop.name;
+  const openNow = details?.openNow ?? stop.openNow;
+  const googleMapsUri = details?.googleMapsUri ?? stop.googleMapsUri;
+
+  return (
+    <div className="max-w-xs space-y-3 text-sm text-stone-800">
+      <div>
+        <div className="font-semibold text-stone-950">{displayName}</div>
+        <div className="mt-1 text-xs text-stone-600">{stop.highway} · {stop.locality}</div>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <span className={`rounded-full px-2 py-1 text-xs font-medium ${openNow ? "bg-emerald-100 text-emerald-800" : "bg-stone-100 text-stone-700"}`}>
+          {openNow ? "Open now" : "Check hours"}
+        </span>
+        <span className={`rounded-full px-2 py-1 text-xs font-medium ${isPremiumPaidStop(stop) ? "bg-yellow-100 text-yellow-900" : "bg-red-100 text-red-800"}`}>
+          {isPremiumPaidStop(stop) ? "Paid premium lounge" : stop.priceLabel}
+        </span>
+      </div>
+      {openingHours.length ? (
+        <div className="space-y-1 border-t pt-2 text-xs leading-5 text-stone-700">
+          {openingHours.slice(0, 7).map((line) => (
+            <div key={line}>{line}</div>
+          ))}
+        </div>
+      ) : (
+        <div className="border-t pt-2 text-xs text-stone-600">Opening hours load from Google when available.</div>
+      )}
+      {googleMapsUri ? (
+        <a className="inline-flex items-center gap-1 text-xs font-medium text-emerald-800 hover:underline" href={googleMapsUri} rel="noreferrer" target="_blank">
+          Open in Google Maps
+          <ExternalLink className="size-3" aria-hidden="true" />
+        </a>
+      ) : null}
+    </div>
+  );
+}
+
+function isPremiumPaidStop(stop: HighwayStop): boolean {
+  return stop.isPaidPremium === true || stop.priceLabel === "Paid";
+}
+
+function dedupeStops(stops: HighwayStop[]): HighwayStop[] {
+  const seen = new Set<string>();
+  const deduped: HighwayStop[] = [];
+
+  for (const stop of stops) {
+    const key = stop.placeId ?? stop.id;
+
+    if (seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    deduped.push(stop);
+  }
+
+  return deduped;
 }
