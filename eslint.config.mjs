@@ -3,7 +3,7 @@ import tseslint from "typescript-eslint";
 
 const eslintConfig = [
   {
-    ignores: [".next/**", "node_modules/**", "playwright-report/**", "test-results/**", "coverage/**", "superpowers/**"],
+    ignores: [".next/**", ".worktrees/**", "node_modules/**", "playwright-report/**", "test-results/**", "coverage/**", "superpowers/**"],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,

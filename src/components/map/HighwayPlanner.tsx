@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { FormEvent, useMemo, useState } from "react";
 
-import { buildRouteSearchResponse } from "@/lib/routes/route-search";
+import { buildRouteSearchResponse, type RouteSearchResponse } from "@/lib/routes/route-search";
 import type { HighwayStop } from "@/lib/restrooms/sample-stops";
 import { MapCanvas } from "./MapCanvas";
 
@@ -36,26 +36,53 @@ export function HighwayPlanner() {
   const [isInsideCity, setIsInsideCity] = useState(true);
   const [searched, setSearched] = useState(true);
   const [selectedStopId, setSelectedStopId] = useState("mumbai-pune-food-plaza");
+  const [plannedResponse, setPlannedResponse] = useState<RouteSearchResponse | null>(null);
+  const [isPlanning, setIsPlanning] = useState(false);
+  const [plannerError, setPlannerError] = useState("");
 
-  const response = useMemo(
-    () =>
-      buildRouteSearchResponse({
-        origin,
-        destination,
-        highwayName,
-        isInsideCity,
-        distanceToHighwayMeters: isInsideCity ? 8_500 : 700,
-      }),
+  const searchInput = useMemo(
+    () => ({
+      origin,
+      destination,
+      highwayName,
+      isInsideCity,
+      distanceToHighwayMeters: isInsideCity ? 8_500 : 700,
+    }),
     [destination, highwayName, isInsideCity, origin],
   );
+  const curatedResponse = useMemo(() => buildRouteSearchResponse(searchInput), [searchInput]);
+  const response = plannedResponse ?? curatedResponse;
 
   const stops = searched ? response.stops : [];
   const selectedStop = stops.find((stop) => stop.id === selectedStopId) ?? stops[0];
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSearched(true);
-    setSelectedStopId(response.stops[0]?.id ?? "");
+    setIsPlanning(true);
+    setPlannerError("");
+
+    try {
+      const apiResponse = await fetch("/api/routes/search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(searchInput),
+      });
+
+      if (!apiResponse.ok) {
+        throw new Error("Route search failed");
+      }
+
+      const nextResponse = (await apiResponse.json()) as RouteSearchResponse;
+      setPlannedResponse(nextResponse);
+      setSelectedStopId(nextResponse.stops[0]?.id ?? "");
+    } catch {
+      setPlannedResponse(curatedResponse);
+      setSelectedStopId(curatedResponse.stops[0]?.id ?? "");
+      setPlannerError("Live route unavailable. Showing curated stops.");
+    } finally {
+      setIsPlanning(false);
+    }
   }
 
   function handleCityOnly() {
@@ -63,6 +90,8 @@ export function HighwayPlanner() {
     setDestination("");
     setHighwayName("");
     setSearched(true);
+    setPlannedResponse(null);
+    setPlannerError("");
     setSelectedStopId("");
   }
 
@@ -70,7 +99,14 @@ export function HighwayPlanner() {
     setIsInsideCity(false);
     setHighwayName("NH48");
     setSearched(true);
+    setPlannedResponse(null);
+    setPlannerError("");
     setSelectedStopId(response.stops[0]?.id ?? "mumbai-pune-food-plaza");
+  }
+
+  function clearPlannedRoute() {
+    setPlannedResponse(null);
+    setPlannerError("");
   }
 
   return (
@@ -124,7 +160,10 @@ export function HighwayPlanner() {
             <input
               id="origin"
               value={origin}
-              onChange={(event) => setOrigin(event.target.value)}
+              onChange={(event) => {
+                setOrigin(event.target.value);
+                clearPlannedRoute();
+              }}
               className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-slate-950"
               placeholder="City or current area"
             />
@@ -135,7 +174,10 @@ export function HighwayPlanner() {
             <input
               id="destination"
               value={destination}
-              onChange={(event) => setDestination(event.target.value)}
+              onChange={(event) => {
+                setDestination(event.target.value);
+                clearPlannedRoute();
+              }}
               className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-slate-950"
               placeholder="Where are you heading?"
             />
@@ -146,7 +188,10 @@ export function HighwayPlanner() {
             <input
               id="highway"
               value={highwayName}
-              onChange={(event) => setHighwayName(event.target.value)}
+              onChange={(event) => {
+                setHighwayName(event.target.value);
+                clearPlannedRoute();
+              }}
               className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-slate-950"
               placeholder="NH48, expressway, bypass"
             />
@@ -154,10 +199,11 @@ export function HighwayPlanner() {
             <div className="flex gap-2">
               <button
                 type="submit"
+                disabled={isPlanning}
                 className="flex flex-1 items-center justify-center gap-2 rounded-md bg-teal-700 px-4 py-2 font-semibold text-white hover:bg-teal-800"
               >
                 <Search className="h-4 w-4" aria-hidden="true" />
-                Plan stops
+                {isPlanning ? "Planning" : "Plan stops"}
               </button>
               <button
                 type="button"
@@ -168,6 +214,18 @@ export function HighwayPlanner() {
                 <Plus className="h-5 w-5" aria-hidden="true" />
               </button>
             </div>
+
+            {response.route ? (
+              <div className="rounded-md border border-teal-200 bg-teal-50 px-3 py-2 text-sm text-teal-950" aria-live="polite">
+                <div className="font-semibold">Live route</div>
+                <div className="mt-1 flex gap-3 text-teal-800">
+                  <span>{formatDistance(response.route.distanceMeters)}</span>
+                  <span>{formatDuration(response.route.durationSeconds)}</span>
+                </div>
+              </div>
+            ) : null}
+
+            {plannerError ? <p className="text-sm font-medium text-amber-700">{plannerError}</p> : null}
           </form>
 
           <div className="flex flex-wrap gap-2 border-b border-slate-200 px-5 py-4">
@@ -270,4 +328,19 @@ function Metric({ label, value }: { label: string; value: string }) {
       <div className="mt-1 font-semibold text-slate-950">{value}</div>
     </div>
   );
+}
+
+function formatDistance(distanceMeters: number): string {
+  return `${Math.round(distanceMeters / 1000)} km`;
+}
+
+function formatDuration(durationSeconds: number): string {
+  const hours = Math.floor(durationSeconds / 3600);
+  const minutes = Math.round((durationSeconds % 3600) / 60);
+
+  if (hours === 0) {
+    return `${minutes} min`;
+  }
+
+  return `${hours}h ${minutes}m`;
 }

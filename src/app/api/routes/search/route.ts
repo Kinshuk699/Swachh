@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
+import { computeDrivingRoute } from "@/lib/google/routes";
 import { buildRouteSearchResponse } from "@/lib/routes/route-search";
 
 const routeSearchSchema = z.object({
@@ -19,5 +20,24 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid route search request" }, { status: 400 });
   }
 
-  return NextResponse.json(buildRouteSearchResponse(parsed.data));
+  const response = buildRouteSearchResponse(parsed.data);
+  const apiKey = process.env.GOOGLE_MAPS_SERVER_API_KEY;
+
+  if (!apiKey || response.intent.requiresTripContext || !parsed.data.origin.trim() || !parsed.data.destination.trim()) {
+    return NextResponse.json(response);
+  }
+
+  try {
+    const route = await computeDrivingRoute(
+      {
+        origin: parsed.data.origin,
+        destination: parsed.data.destination,
+      },
+      { apiKey },
+    );
+
+    return NextResponse.json({ ...response, route });
+  } catch {
+    return NextResponse.json(response);
+  }
 }

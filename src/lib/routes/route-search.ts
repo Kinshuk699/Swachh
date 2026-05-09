@@ -4,6 +4,7 @@ import {
   rankHighwayStops,
   type TravelerIntent,
 } from "@/lib/highways/highway-relevance";
+import type { DrivingRouteSummary } from "@/lib/google/routes";
 import { sampleHighwayStops, type HighwayStop } from "@/lib/restrooms/sample-stops";
 
 export type RouteSearchInput = {
@@ -16,6 +17,7 @@ export type RouteSearchInput = {
 
 export type RouteSearchResponse = {
   intent: TravelerIntent;
+  route: DrivingRouteSummary | null;
   stops: HighwayStop[];
 };
 
@@ -28,11 +30,11 @@ export function buildRouteSearchResponse(input: RouteSearchInput): RouteSearchRe
   });
 
   if (intent.requiresTripContext) {
-    return { intent, stops: [] };
+    return { intent, route: null, stops: [] };
   }
 
   const relevantStops = filterHighwayRelevantStops(sampleHighwayStops) as HighwayStop[];
   const rankedStops = rankHighwayStops(relevantStops) as HighwayStop[];
 
-  return { intent, stops: rankedStops };
+  return { intent, route: null, stops: rankedStops };
 }
