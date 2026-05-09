@@ -64,7 +64,8 @@ describe("HighwayPlanner", () => {
     vi.stubGlobal("fetch", fetchSpy);
 
     render(<HighwayPlanner />);
-    fireEvent.click(screen.getByRole("button", { name: "Submit stop" }));
+    fireEvent.click(screen.getByRole("button", { name: "Submit missing stop" }));
+    expect(screen.getByText("Report a restroom stop")).toBeTruthy();
     fireEvent.change(screen.getByLabelText("Stop name"), { target: { value: "Clean Fuel Stop" } });
     fireEvent.change(screen.getByLabelText("Latitude"), { target: { value: "18.765" } });
     fireEvent.change(screen.getByLabelText("Longitude"), { target: { value: "73.377" } });

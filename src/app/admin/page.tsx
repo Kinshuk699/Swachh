@@ -1,59 +1,98 @@
-import { CheckCircle2, ShieldCheck, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Inbox, MapPinned, ShieldCheck, XCircle } from "lucide-react";
 
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { listPendingRestroomSubmissions, type PendingRestroomSubmission } from "@/lib/admin/submissions";
 
 export default async function AdminPage() {
   const queue = await loadQueue();
+  const pendingReviewLabel = formatPendingReviewCount(queue.submissions.length);
 
   return (
-    <main className="min-h-screen bg-slate-100 px-6 py-6 text-slate-950">
-      <div className="mx-auto max-w-5xl">
-        <div className="mb-6 flex items-center justify-between gap-4">
+    <main className="min-h-screen bg-muted/40 px-4 py-4 text-foreground sm:px-6 sm:py-6">
+      <div className="mx-auto flex max-w-6xl flex-col gap-5">
+        <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <p className="text-sm font-semibold uppercase text-teal-700">Moderation</p>
-            <h1 className="mt-1 text-2xl font-semibold">Pending submissions</h1>
+            <Badge variant="outline" className="mb-2 border-emerald-200 bg-emerald-50 text-emerald-800">
+              Admin
+            </Badge>
+            <h1 className="font-heading text-2xl font-medium tracking-tight">Moderation queue</h1>
+            <p className="mt-1 text-sm text-muted-foreground">Review highway-first restroom submissions before they appear in traveler search.</p>
           </div>
-          <div className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700">
-            {queue.submissions.length} pending
-          </div>
-        </div>
+          <Badge variant="secondary" className="h-7 rounded-lg px-3">
+            {pendingReviewLabel}
+          </Badge>
+        </header>
+
+        <section className="grid gap-3 md:grid-cols-3" aria-label="Queue summary">
+          <SummaryCard title="Pending" value={String(queue.submissions.length)} description="Awaiting moderator decision" />
+          <SummaryCard title="Storage" value={queue.storageConfigured ? "Live" : "Local"} description={queue.storageConfigured ? "Supabase service role" : "Dev queue fallback"} />
+          <SummaryCard title="Verified" value="Stub" description="Approve actions are visual for MVP" />
+        </section>
 
         {!queue.storageConfigured ? (
-          <div className="mb-4 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-            {queue.submissions.length > 0
-              ? "Using the local dev moderation queue. Add the server-only Supabase service role key to review live submissions."
-              : "Admin queue storage is not configured. Add the server-only Supabase service role key to review live submissions."}
-          </div>
+          <Alert className="border-amber-300 bg-amber-50 text-amber-950">
+            <AlertTriangle aria-hidden="true" />
+            <AlertTitle>{queue.submissions.length > 0 ? "Local dev queue" : "Storage not configured"}</AlertTitle>
+            <AlertDescription className="text-amber-800">
+              {queue.submissions.length > 0
+                ? "Local submissions are visible here until the server-only Supabase service role key is set."
+                : "Add the server-only Supabase service role key to review live submissions."}
+            </AlertDescription>
+          </Alert>
         ) : null}
 
         {queue.error ? (
-          <div className="mb-4 rounded-md border border-rose-300 bg-rose-50 px-4 py-3 text-sm text-rose-950">{queue.error}</div>
+          <Alert variant="destructive">
+            <AlertTriangle aria-hidden="true" />
+            <AlertTitle>Queue unavailable</AlertTitle>
+            <AlertDescription>{queue.error}</AlertDescription>
+          </Alert>
         ) : null}
 
-        <div className="overflow-hidden rounded-md border border-slate-300 bg-white">
-          <table className="w-full border-collapse text-left text-sm">
-            <thead className="bg-slate-50 text-slate-600">
-              <tr>
-                <th className="px-4 py-3 font-semibold">Stop</th>
-                <th className="px-4 py-3 font-semibold">Highway</th>
-                <th className="px-4 py-3 font-semibold">Category</th>
-                <th className="px-4 py-3 font-semibold">Flags</th>
-                <th className="px-4 py-3 font-semibold">Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {queue.submissions.length > 0 ? (
-                queue.submissions.map((submission) => <SubmissionRow key={submission.id} submission={submission} />)
-              ) : (
-                <tr className="border-t border-slate-200">
-                  <td className="px-4 py-8 text-center text-slate-600" colSpan={5}>
-                    No pending restroom submissions.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+        <Card className="rounded-lg">
+          <CardHeader>
+            <CardTitle>Pending submissions</CardTitle>
+            <CardDescription>Newest reports first</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {queue.submissions.length > 0 ? (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Stop</TableHead>
+                    <TableHead>Highway</TableHead>
+                    <TableHead>Category</TableHead>
+                    <TableHead>Flags</TableHead>
+                    <TableHead className="text-right">Action</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {queue.submissions.map((submission) => (
+                    <SubmissionRow key={submission.id} submission={submission} />
+                  ))}
+                </TableBody>
+              </Table>
+            ) : (
+              <Empty className="border">
+                <EmptyHeader>
+                  <EmptyMedia variant="icon">
+                    <Inbox aria-hidden="true" />
+                  </EmptyMedia>
+                  <EmptyTitle>No pending restroom submissions</EmptyTitle>
+                  <EmptyDescription>New crowd reports will appear here after travelers submit highway stops.</EmptyDescription>
+                </EmptyHeader>
+                <EmptyContent>
+                  <Badge variant="outline">{queue.storageConfigured ? "Live storage" : "Local queue"}</Badge>
+                </EmptyContent>
+              </Empty>
+            )}
+          </CardContent>
+        </Card>
       </div>
     </main>
   );
@@ -69,33 +108,52 @@ async function loadQueue() {
 
 function SubmissionRow({ submission }: { submission: PendingRestroomSubmission }) {
   return (
-    <tr className="border-t border-slate-200">
-      <td className="px-4 py-3">
-        <div className="font-medium text-slate-950">{submission.name}</div>
-        <div className="mt-1 text-xs text-slate-500">
+    <TableRow>
+      <TableCell>
+        <div className="font-medium text-foreground">{submission.name}</div>
+        <div className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
+          <MapPinned className="size-3" aria-hidden="true" />
           {submission.latitude.toFixed(4)}, {submission.longitude.toFixed(4)}
         </div>
-      </td>
-      <td className="px-4 py-3">
-        <div className="text-slate-700">{submission.highwayName}</div>
-        {submission.routeContext ? <div className="mt-1 text-xs text-slate-500">{submission.routeContext}</div> : null}
-      </td>
-      <td className="px-4 py-3 text-slate-600">{formatCategory(submission.category)}</td>
-      <td className="px-4 py-3 text-slate-600">{formatFlags(submission)}</td>
-      <td className="px-4 py-3">
-        <div className="flex gap-2">
-          <button type="button" title="Approve" aria-label="Approve" className="rounded-md border border-teal-300 p-2 text-teal-700 hover:bg-teal-50">
-            <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
-          </button>
-          <button type="button" title="Verify" aria-label="Verify" className="rounded-md border border-sky-300 p-2 text-sky-700 hover:bg-sky-50">
-            <ShieldCheck className="h-4 w-4" aria-hidden="true" />
-          </button>
-          <button type="button" title="Reject" aria-label="Reject" className="rounded-md border border-rose-300 p-2 text-rose-700 hover:bg-rose-50">
-            <XCircle className="h-4 w-4" aria-hidden="true" />
-          </button>
+      </TableCell>
+      <TableCell>
+        <div className="text-foreground">{submission.highwayName}</div>
+        {submission.routeContext ? <div className="mt-1 text-xs text-muted-foreground">{submission.routeContext}</div> : null}
+      </TableCell>
+      <TableCell>
+        <Badge variant="secondary">{formatCategory(submission.category)}</Badge>
+      </TableCell>
+      <TableCell>
+        <div className="flex max-w-sm flex-wrap gap-1.5">{formatFlags(submission).map((flag) => flag)}</div>
+      </TableCell>
+      <TableCell className="text-right">
+        <div className="flex justify-end gap-2">
+          <Button type="button" title="Approve" aria-label="Approve" variant="outline" size="icon-sm" className="text-emerald-700 hover:bg-emerald-50">
+            <CheckCircle2 aria-hidden="true" />
+          </Button>
+          <Button type="button" title="Verify" aria-label="Verify" variant="outline" size="icon-sm" className="text-sky-700 hover:bg-sky-50">
+            <ShieldCheck aria-hidden="true" />
+          </Button>
+          <Button type="button" title="Reject" aria-label="Reject" variant="outline" size="icon-sm" className="text-rose-700 hover:bg-rose-50">
+            <XCircle aria-hidden="true" />
+          </Button>
         </div>
-      </td>
-    </tr>
+      </TableCell>
+    </TableRow>
+  );
+}
+
+function SummaryCard({ title, value, description }: { title: string; value: string; description: string }) {
+  return (
+    <Card size="sm" className="rounded-lg">
+      <CardHeader>
+        <CardTitle>{title}</CardTitle>
+        <CardAction>
+          <Badge variant="outline">{value}</Badge>
+        </CardAction>
+        <CardDescription>{description}</CardDescription>
+      </CardHeader>
+    </Card>
   );
 }
 
@@ -106,7 +164,7 @@ function formatCategory(category: string): string {
     .join(" ");
 }
 
-function formatFlags(submission: PendingRestroomSubmission): string {
+function formatFlags(submission: PendingRestroomSubmission) {
   const flags = [
     submission.freeAccess ? "Free" : "Customer access",
     submission.womenFriendly ? "Women-friendly" : "Unverified women access",
@@ -117,5 +175,13 @@ function formatFlags(submission: PendingRestroomSubmission): string {
     flags.push(`${submission.cleanlinessRating}/5 clean`);
   }
 
-  return flags.join(" / ");
+  return flags.map((flag) => (
+    <Badge key={flag} variant="outline">
+      {flag}
+    </Badge>
+  ));
+}
+
+function formatPendingReviewCount(count: number): string {
+  return count === 1 ? "1 pending review" : `${count} pending reviews`;
 }

@@ -2,11 +2,13 @@
 
 import {
   Accessibility,
+  AlertTriangle,
   CheckCircle2,
   Clock,
   Coffee,
   Fuel,
   LocateFixed,
+  MapPinned,
   MessageCircle,
   Navigation,
   Plus,
@@ -16,6 +18,17 @@ import {
 } from "lucide-react";
 import { FormEvent, useMemo, useState } from "react";
 
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Field, FieldDescription, FieldGroup, FieldLabel, FieldSet } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Separator } from "@/components/ui/separator";
+import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
 import { buildRouteSearchResponse, type RouteSearchResponse } from "@/lib/routes/route-search";
 import type { HighwayStop } from "@/lib/restrooms/sample-stops";
 import { MapCanvas } from "./MapCanvas";
@@ -73,6 +86,7 @@ export function HighwayPlanner() {
 
   const stops = searched ? response.stops : [];
   const selectedStop = stops.find((stop) => stop.id === selectedStopId) ?? stops[0];
+  const routeMode = isInsideCity ? "city" : "highway";
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -119,7 +133,7 @@ export function HighwayPlanner() {
     setSearched(true);
     setPlannedResponse(null);
     setPlannerError("");
-    setSelectedStopId(response.stops[0]?.id ?? "mumbai-pune-food-plaza");
+    setSelectedStopId(curatedResponse.stops[0]?.id ?? "mumbai-pune-food-plaza");
   }
 
   function clearPlannedRoute() {
@@ -167,266 +181,172 @@ export function HighwayPlanner() {
   }
 
   return (
-    <main className="min-h-screen bg-slate-100 text-slate-950">
-      <div className="grid min-h-screen grid-cols-1 lg:grid-cols-[420px_1fr]">
-        <aside className="flex flex-col border-r border-slate-300 bg-white">
-          <div className="border-b border-slate-200 px-5 py-4">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="text-sm font-semibold uppercase text-teal-700">Swachh</p>
-                <h1 className="mt-1 text-2xl font-semibold text-slate-950">Highway restroom stops</h1>
-              </div>
-              <button
-                type="button"
-                title="WhatsApp"
-                aria-label="WhatsApp"
-                className="flex h-10 w-10 items-center justify-center rounded-md border border-slate-300 text-teal-700 hover:bg-teal-50"
-              >
-                <MessageCircle className="h-5 w-5" aria-hidden="true" />
-              </button>
+    <main className="min-h-screen bg-muted/40 text-foreground">
+      <div className="grid min-h-screen grid-cols-1 lg:grid-cols-[390px_minmax(0,1fr)]">
+        <aside className="order-2 flex min-h-screen flex-col border-r bg-background lg:order-1">
+          <header className="flex items-start justify-between gap-3 border-b px-4 py-4">
+            <div>
+              <Badge variant="outline" className="mb-2 border-emerald-200 bg-emerald-50 text-emerald-800">
+                Swachh
+              </Badge>
+              <h1 className="font-heading text-xl font-medium tracking-tight">Highway restroom stops</h1>
+              <p className="mt-1 text-sm text-muted-foreground">India road-trip planning for expressways, toll plazas, fuel stations, and bypasses.</p>
             </div>
-          </div>
+            <Button type="button" variant="outline" size="icon" title="WhatsApp" aria-label="WhatsApp">
+              <MessageCircle aria-hidden="true" />
+            </Button>
+          </header>
 
-          <form className="space-y-4 border-b border-slate-200 px-5 py-5" onSubmit={handleSubmit}>
-            <div className="grid grid-cols-2 gap-2 rounded-md bg-slate-100 p-1">
-              <button
-                type="button"
-                onClick={handleCityOnly}
-                className={`flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-semibold ${
-                  isInsideCity ? "bg-white text-slate-950 shadow-sm" : "text-slate-600 hover:bg-white/70"
-                }`}
-              >
-                <LocateFixed className="h-4 w-4" aria-hidden="true" />
-                City start
-              </button>
-              <button
-                type="button"
-                onClick={handleHighwayMode}
-                className={`flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-semibold ${
-                  !isInsideCity ? "bg-white text-slate-950 shadow-sm" : "text-slate-600 hover:bg-white/70"
-                }`}
-              >
-                <Route className="h-4 w-4" aria-hidden="true" />
-                On highway
-              </button>
-            </div>
+          <div className="space-y-4 border-b px-4 py-4">
+            <Card size="sm" className="rounded-lg">
+              <CardHeader>
+                <CardTitle>Route search</CardTitle>
+                <CardDescription>Origins, destinations, highways, expressways, and bypasses.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <form className="space-y-4" onSubmit={handleSubmit}>
+                  <Tabs
+                    value={routeMode}
+                    onValueChange={(value) => {
+                      if (value === "city") {
+                        handleCityOnly();
+                      } else {
+                        handleHighwayMode();
+                      }
+                    }}
+                  >
+                    <TabsList className="grid w-full grid-cols-2">
+                      <TabsTrigger value="city">
+                        <LocateFixed data-icon="inline-start" aria-hidden="true" />
+                        City start
+                      </TabsTrigger>
+                      <TabsTrigger value="highway">
+                        <Route data-icon="inline-start" aria-hidden="true" />
+                        On highway
+                      </TabsTrigger>
+                    </TabsList>
+                  </Tabs>
 
-            <label className="block text-sm font-medium text-slate-700" htmlFor="origin">
-              Start
-            </label>
-            <input
-              id="origin"
-              value={origin}
-              onChange={(event) => {
-                setOrigin(event.target.value);
-                clearPlannedRoute();
-              }}
-              className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-slate-950"
-              placeholder="City or current area"
-            />
+                  <FieldGroup>
+                    <Field>
+                      <FieldLabel htmlFor="origin">Start</FieldLabel>
+                      <Input
+                        id="origin"
+                        value={origin}
+                        onChange={(event) => {
+                          setOrigin(event.target.value);
+                          clearPlannedRoute();
+                        }}
+                        placeholder="City or current area"
+                      />
+                    </Field>
 
-            <label className="block text-sm font-medium text-slate-700" htmlFor="destination">
-              Destination
-            </label>
-            <input
-              id="destination"
-              value={destination}
-              onChange={(event) => {
-                setDestination(event.target.value);
-                clearPlannedRoute();
-              }}
-              className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-slate-950"
-              placeholder="Where are you heading?"
-            />
+                    <Field>
+                      <FieldLabel htmlFor="destination">Destination</FieldLabel>
+                      <Input
+                        id="destination"
+                        value={destination}
+                        onChange={(event) => {
+                          setDestination(event.target.value);
+                          clearPlannedRoute();
+                        }}
+                        placeholder="Where are you heading?"
+                      />
+                    </Field>
 
-            <label className="block text-sm font-medium text-slate-700" htmlFor="highway">
-              Highway
-            </label>
-            <input
-              id="highway"
-              value={highwayName}
-              onChange={(event) => {
-                setHighwayName(event.target.value);
-                clearPlannedRoute();
-              }}
-              className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-slate-950"
-              placeholder="NH48, expressway, bypass"
-            />
+                    <Field>
+                      <FieldLabel htmlFor="highway">Highway</FieldLabel>
+                      <Input
+                        id="highway"
+                        value={highwayName}
+                        onChange={(event) => {
+                          setHighwayName(event.target.value);
+                          clearPlannedRoute();
+                        }}
+                        placeholder="NH48, expressway, bypass"
+                      />
+                    </Field>
+                  </FieldGroup>
 
-            <div className="flex gap-2">
-              <button
-                type="submit"
-                disabled={isPlanning}
-                className="flex flex-1 items-center justify-center gap-2 rounded-md bg-teal-700 px-4 py-2 font-semibold text-white hover:bg-teal-800"
-              >
-                <Search className="h-4 w-4" aria-hidden="true" />
-                {isPlanning ? "Planning" : "Plan stops"}
-              </button>
-              <button
-                type="button"
-                title="Submit stop"
-                aria-label="Submit stop"
-                onClick={openSubmissionForm}
-                className="flex h-10 w-10 items-center justify-center rounded-md border border-slate-300 text-slate-700 hover:bg-slate-50"
-              >
-                <Plus className="h-5 w-5" aria-hidden="true" />
-              </button>
-            </div>
+                  <div className="grid grid-cols-[1fr_auto] gap-2">
+                    <Button type="submit" disabled={isPlanning}>
+                      <Search data-icon="inline-start" aria-hidden="true" />
+                      {isPlanning ? "Planning" : "Plan stops"}
+                    </Button>
+                    <Button type="button" variant="outline" size="icon" title="Submit missing stop" aria-label="Submit missing stop" onClick={openSubmissionForm}>
+                      <Plus aria-hidden="true" />
+                    </Button>
+                  </div>
+                </form>
+              </CardContent>
+            </Card>
 
             {response.route ? (
-              <div className="rounded-md border border-teal-200 bg-teal-50 px-3 py-2 text-sm text-teal-950" aria-live="polite">
-                <div className="font-semibold">Live route</div>
-                <div className="mt-1 flex gap-3 text-teal-800">
+              <Alert className="border-emerald-200 bg-emerald-50 text-emerald-950" aria-live="polite">
+                <Route aria-hidden="true" />
+                <AlertTitle>Live route</AlertTitle>
+                <AlertDescription className="flex gap-3 text-emerald-800">
                   <span>{formatDistance(response.route.distanceMeters)}</span>
                   <span>{formatDuration(response.route.durationSeconds)}</span>
-                </div>
-              </div>
+                </AlertDescription>
+              </Alert>
             ) : null}
 
-            {plannerError ? <p className="text-sm font-medium text-amber-700">{plannerError}</p> : null}
-          </form>
-
-          {showSubmissionForm ? (
-            <form className="space-y-3 border-b border-slate-200 bg-slate-50 px-5 py-4" onSubmit={handleStopSubmission}>
-              <div>
-                <h2 className="text-sm font-semibold text-slate-950">Submit restroom stop</h2>
-                <p className="mt-1 text-xs text-slate-600">New stops are held for moderation before appearing publicly.</p>
-              </div>
-
-              <label className="block text-sm font-medium text-slate-700" htmlFor="submission-name">
-                Stop name
-              </label>
-              <input
-                id="submission-name"
-                value={submissionName}
-                onChange={(event) => setSubmissionName(event.target.value)}
-                className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-slate-950"
-                placeholder="Fuel pump, toll plaza, food court"
-              />
-
-              <label className="block text-sm font-medium text-slate-700" htmlFor="submission-category">
-                Category
-              </label>
-              <select
-                id="submission-category"
-                value={submissionCategory}
-                onChange={(event) => setSubmissionCategory(event.target.value as SubmissionCategory)}
-                className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-slate-950"
-              >
-                {submissionCategories.map((category) => (
-                  <option key={category.value} value={category.value}>
-                    {category.label}
-                  </option>
-                ))}
-              </select>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700" htmlFor="submission-latitude">
-                    Latitude
-                  </label>
-                  <input
-                    id="submission-latitude"
-                    inputMode="decimal"
-                    value={submissionLatitude}
-                    onChange={(event) => setSubmissionLatitude(event.target.value)}
-                    className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-slate-950"
-                    placeholder="18.765"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700" htmlFor="submission-longitude">
-                    Longitude
-                  </label>
-                  <input
-                    id="submission-longitude"
-                    inputMode="decimal"
-                    value={submissionLongitude}
-                    onChange={(event) => setSubmissionLongitude(event.target.value)}
-                    className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-slate-950"
-                    placeholder="73.377"
-                  />
-                </div>
-              </div>
-
-              <label className="block text-sm font-medium text-slate-700" htmlFor="submission-highway">
-                Highway
-              </label>
-              <input
-                id="submission-highway"
-                value={submissionHighwayName}
-                onChange={(event) => setSubmissionHighwayName(event.target.value)}
-                className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-slate-950"
-                placeholder="NH48, expressway, bypass"
-              />
-
-              <button
-                type="submit"
-                disabled={isSubmittingStop}
-                className="flex w-full items-center justify-center rounded-md bg-teal-700 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-800"
-              >
-                {isSubmittingStop ? "Sending" : "Send for review"}
-              </button>
-
-              {submissionMessage ? <p className="text-sm font-medium text-teal-800">{submissionMessage}</p> : null}
-            </form>
-          ) : null}
-
-          <div className="flex flex-wrap gap-2 border-b border-slate-200 px-5 py-4">
-            {filterOptions.map((option) => {
-              const Icon = option.icon;
-              return (
-                <button
-                  key={option.label}
-                  type="button"
-                  className="flex items-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-                >
-                  <Icon className="h-4 w-4 text-teal-700" aria-hidden="true" />
-                  {option.label}
-                </button>
-              );
-            })}
+            {plannerError ? (
+              <Alert className="border-amber-300 bg-amber-50 text-amber-950">
+                <AlertTriangle aria-hidden="true" />
+                <AlertTitle>Curated fallback</AlertTitle>
+                <AlertDescription className="text-amber-800">{plannerError}</AlertDescription>
+              </Alert>
+            ) : null}
           </div>
 
-          <section className="min-h-0 flex-1 overflow-y-auto px-5 py-4" aria-label="Restroom stops">
+          <section className="border-b px-4 py-3" aria-label="Filters">
+            <div className="flex flex-wrap gap-2">
+              {filterOptions.map((option) => {
+                const Icon = option.icon;
+                return (
+                  <Button key={option.label} type="button" variant="outline" size="sm" className="bg-background">
+                    <Icon data-icon="inline-start" aria-hidden="true" />
+                    {option.label}
+                  </Button>
+                );
+              })}
+            </div>
+          </section>
+
+          <section className="min-h-0 flex-1 overflow-y-auto px-4 py-4" aria-label="Restroom stops">
             {response.intent.requiresTripContext ? (
-              <div className="rounded-md border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
-                <div className="flex items-start gap-3">
-                  <Navigation className="mt-0.5 h-5 w-5 flex-none" aria-hidden="true" />
-                  <div>
-                    <h2 className="font-semibold">Where are you heading?</h2>
-                    <p className="mt-1">Add a destination or highway to see route-ready restroom stops.</p>
-                  </div>
-                </div>
-              </div>
+              <Alert className="border-amber-300 bg-amber-50 text-amber-950">
+                <Navigation aria-hidden="true" />
+                <AlertTitle>Where are you heading?</AlertTitle>
+                <AlertDescription className="text-amber-800">Add a destination or highway to see route-ready restroom stops.</AlertDescription>
+              </Alert>
             ) : (
               <div className="space-y-3">
                 {stops.map((stop) => (
-                  <StopCard
-                    key={stop.id}
-                    stop={stop}
-                    selected={selectedStop?.id === stop.id}
-                    onSelect={() => setSelectedStopId(stop.id)}
-                  />
+                  <StopCard key={stop.id} stop={stop} selected={selectedStop?.id === stop.id} onSelect={() => setSelectedStopId(stop.id)} />
                 ))}
               </div>
             )}
           </section>
         </aside>
 
-        <section className="grid min-h-[640px] grid-rows-[1fr_auto] bg-slate-200">
+        <section className="order-1 grid min-h-[560px] grid-rows-[1fr_auto] bg-muted lg:order-2 lg:min-h-[640px]">
           <MapCanvas
             stops={stops}
             selectedStopId={selectedStop?.id ?? ""}
             routePolyline={response.route?.encodedPolyline}
             onSelectStop={setSelectedStopId}
           />
-          <div className="border-t border-slate-300 bg-white px-5 py-4">
+          <div className="border-t bg-background px-4 py-4 shadow-[0_-8px_30px_rgba(15,23,42,0.08)]">
             <div className="grid gap-4 md:grid-cols-[1fr_auto] md:items-center">
               <div>
-                <p className="text-sm font-semibold text-teal-700">{selectedStop?.highway ?? "Trip context needed"}</p>
-                <h2 className="mt-1 text-xl font-semibold text-slate-950">{selectedStop?.name ?? "Add destination or highway"}</h2>
-                <p className="mt-1 text-sm text-slate-600">{selectedStop?.locality ?? "City-only searches stay paused until a route is selected."}</p>
+                <Badge variant="outline" className="mb-2 border-emerald-200 bg-emerald-50 text-emerald-800">
+                  {selectedStop?.highway ?? "Trip context needed"}
+                </Badge>
+                <h2 className="font-heading text-xl font-medium tracking-tight">{selectedStop?.name ?? "Add destination or highway"}</h2>
+                <p className="mt-1 text-sm text-muted-foreground">{selectedStop?.locality ?? "City-only searches stay paused until a route is selected."}</p>
               </div>
               {selectedStop ? (
                 <div className="grid grid-cols-3 gap-2 text-center text-sm">
@@ -439,44 +359,169 @@ export function HighwayPlanner() {
           </div>
         </section>
       </div>
+
+      <Sheet open={showSubmissionForm} onOpenChange={setShowSubmissionForm}>
+        <SheetContent className="w-[92vw] sm:max-w-md">
+          <SheetHeader>
+            <SheetTitle>Report a restroom stop</SheetTitle>
+            <SheetDescription>New highway stops are held for moderation before appearing publicly.</SheetDescription>
+          </SheetHeader>
+
+          <form id="restroom-submission-form" className="min-h-0 flex-1 overflow-y-auto px-4" onSubmit={handleStopSubmission}>
+            <FieldSet>
+              <FieldGroup>
+                <Field>
+                  <FieldLabel htmlFor="submission-name">Stop name</FieldLabel>
+                  <Input
+                    id="submission-name"
+                    value={submissionName}
+                    onChange={(event) => setSubmissionName(event.target.value)}
+                    placeholder="Fuel pump, toll plaza, food court"
+                  />
+                </Field>
+
+                <Field>
+                  <FieldLabel htmlFor="submission-category">Category</FieldLabel>
+                  <Select value={submissionCategory} onValueChange={(value) => setSubmissionCategory(value as SubmissionCategory)}>
+                    <SelectTrigger id="submission-category" className="w-full">
+                      <SelectValue placeholder="Select category" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectGroup>
+                        {submissionCategories.map((category) => (
+                          <SelectItem key={category.value} value={category.value}>
+                            {category.label}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                </Field>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <Field>
+                    <FieldLabel htmlFor="submission-latitude">Latitude</FieldLabel>
+                    <Input
+                      id="submission-latitude"
+                      inputMode="decimal"
+                      value={submissionLatitude}
+                      onChange={(event) => setSubmissionLatitude(event.target.value)}
+                      placeholder="18.765"
+                    />
+                  </Field>
+                  <Field>
+                    <FieldLabel htmlFor="submission-longitude">Longitude</FieldLabel>
+                    <Input
+                      id="submission-longitude"
+                      inputMode="decimal"
+                      value={submissionLongitude}
+                      onChange={(event) => setSubmissionLongitude(event.target.value)}
+                      placeholder="73.377"
+                    />
+                  </Field>
+                </div>
+
+                <Field>
+                  <FieldLabel htmlFor="submission-highway">Highway</FieldLabel>
+                  <Input
+                    id="submission-highway"
+                    value={submissionHighwayName}
+                    onChange={(event) => setSubmissionHighwayName(event.target.value)}
+                    placeholder="NH48, expressway, bypass"
+                  />
+                </Field>
+
+                <Field>
+                  <FieldLabel htmlFor="submission-notes">Notes</FieldLabel>
+                  <Textarea id="submission-notes" placeholder="Lighting, attendant, women-friendly access, paid access" />
+                  <FieldDescription>Lighting, attendant, signage, payment, or access details.</FieldDescription>
+                </Field>
+              </FieldGroup>
+            </FieldSet>
+          </form>
+
+          {submissionMessage ? (
+            <div className="px-4">
+              <Alert className="border-emerald-200 bg-emerald-50 text-emerald-950">
+                <CheckCircle2 aria-hidden="true" />
+                <AlertTitle>Submission update</AlertTitle>
+                <AlertDescription className="text-emerald-800">{submissionMessage}</AlertDescription>
+              </Alert>
+            </div>
+          ) : null}
+
+          <SheetFooter>
+            <Button type="submit" form="restroom-submission-form" disabled={isSubmittingStop}>
+              {isSubmittingStop ? "Sending" : "Send for review"}
+            </Button>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
     </main>
   );
 }
 
 function StopCard({ stop, selected, onSelect }: { stop: HighwayStop; selected: boolean; onSelect: () => void }) {
   return (
-    <button
-      type="button"
+    <Card
+      role="button"
+      tabIndex={0}
+      size="sm"
       onClick={onSelect}
-      className={`w-full rounded-md border p-4 text-left transition ${
-        selected ? "border-teal-700 bg-teal-50" : "border-slate-200 bg-white hover:border-slate-400"
-      }`}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onSelect();
+        }
+      }}
+      data-selected={selected}
+      className="w-full cursor-pointer rounded-lg text-left transition hover:bg-muted/50 data-[selected=true]:border-emerald-500 data-[selected=true]:bg-emerald-50 data-[selected=true]:ring-emerald-600/30"
     >
-      <div className="flex items-start justify-between gap-3">
+      <CardHeader>
         <div>
-          <h3 className="font-semibold text-slate-950">{stop.name}</h3>
-          <p className="mt-1 text-sm text-slate-600">{stop.highway}</p>
+          <CardTitle>{stop.name}</CardTitle>
+          <CardDescription className="mt-1">{stop.highway}</CardDescription>
         </div>
-        <span className="rounded-md bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-700">{stop.detourMinutes}m</span>
-      </div>
-      <div className="mt-3 flex flex-wrap gap-2">
-        {stop.facilities.slice(0, 3).map((facility) => (
-          <span key={facility} className="rounded-md bg-white px-2 py-1 text-xs font-medium text-slate-600 ring-1 ring-slate-200">
-            {facility}
-          </span>
-        ))}
-      </div>
-    </button>
+        <CardAction>
+          <Badge variant="secondary">{stop.detourMinutes}m</Badge>
+        </CardAction>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <MapPinned className="size-4 text-emerald-700" aria-hidden="true" />
+          <span>{stop.locality}</span>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Badge variant={stop.openNow ? "default" : "outline"} className={stop.openNow ? "bg-emerald-700 text-white" : ""}>
+            {stop.openNow ? "Open" : "Check"}
+          </Badge>
+          <Badge variant="outline">{stop.priceLabel}</Badge>
+          <Badge variant="outline">{formatConfidence(stop.confidence)}</Badge>
+        </div>
+        <Separator />
+        <div className="flex flex-wrap gap-2">
+          {stop.facilities.slice(0, 3).map((facility) => (
+            <Badge key={facility} variant="secondary">
+              {facility}
+            </Badge>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
 function Metric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="min-w-20 rounded-md border border-slate-200 px-3 py-2">
-      <div className="text-xs font-medium text-slate-500">{label}</div>
-      <div className="mt-1 font-semibold text-slate-950">{value}</div>
+    <div className="min-w-20 rounded-lg border bg-card px-3 py-2">
+      <div className="text-xs font-medium text-muted-foreground">{label}</div>
+      <div className="mt-1 font-medium text-foreground">{value}</div>
     </div>
   );
+}
+
+function formatConfidence(confidence: number): string {
+  return `${Math.round(confidence * 100)}% verified`;
 }
 
 function formatDistance(distanceMeters: number): string {

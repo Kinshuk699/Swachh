@@ -32,7 +32,8 @@ describe("AdminPage", () => {
   it("renders the pending restroom submission queue", async () => {
     render(await AdminPage());
 
-    expect(screen.getByText("Pending submissions")).toBeTruthy();
+    expect(screen.getByText("Moderation queue")).toBeTruthy();
+    expect(screen.getByText("1 pending review")).toBeTruthy();
     expect(screen.getByText("Clean Fuel Stop")).toBeTruthy();
     expect(screen.getByText("Mumbai-Pune Expressway")).toBeTruthy();
     expect(screen.getByText("Khalapur service corridor")).toBeTruthy();
