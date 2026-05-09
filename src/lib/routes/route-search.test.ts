@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { buildRouteSearchResponse } from "./route-search";
 
 describe("buildRouteSearchResponse", () => {
-  it("withholds stop results for a dense city query without trip context", () => {
+  it("returns atlas stops while still asking dense-city users for trip context", () => {
     const response = buildRouteSearchResponse({
       origin: "Bandra West, Mumbai",
       destination: "",
@@ -13,7 +13,13 @@ describe("buildRouteSearchResponse", () => {
     });
 
     expect(response.intent.mode).toBe("ask-for-trip");
-    expect(response.stops).toEqual([]);
+    expect(response.intent.requiresTripContext).toBe(true);
+    expect(response.stops.map((stop) => stop.id)).toEqual([
+      "mumbai-pune-food-plaza",
+      "nh48-toll-plaza",
+      "city-edge-fuel-station",
+    ]);
+    expect(response.stops).not.toContainEqual(expect.objectContaining({ id: "dense-city-mall" }));
   });
 
   it("returns highway-ranked stops when the traveler supplies a destination", () => {

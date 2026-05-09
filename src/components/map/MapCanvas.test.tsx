@@ -21,7 +21,7 @@ describe("MapCanvas", () => {
     process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY = originalApiKey;
   });
 
-  it("draws the encoded route polyline on the Google map", () => {
+  it("keeps the Swachh atlas when a live route polyline is available", () => {
     process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY = "browser-key";
 
     render(
@@ -33,8 +33,13 @@ describe("MapCanvas", () => {
       />,
     );
 
-    expect(screen.getByTestId("route-polyline").getAttribute("data-encoded-path")).toBe("encoded-route");
-    expect(screen.getByTestId("route-polyline").getAttribute("data-stroke-color")).toBe("#0f766e");
+    expect(screen.queryByTestId("google-map")).toBeNull();
+    const atlas = screen.getByRole("img", { name: /swachh national highway atlas/i });
+    expect(atlas).toBeTruthy();
+    expect(atlas.getAttribute("viewBox")).toBe("0 0 390 430");
+    expect(screen.getByLabelText("Planned route corridor")).toBeTruthy();
+    expect(screen.getByTestId("india-mainland-outline").getAttribute("d")).toContain("C210 342 193 369 172 407");
+    expect(screen.getByTestId("india-northeast-outline").getAttribute("d")).toContain("C344 151 366 169 360 190");
   });
 
   it("shows a route corridor in map preview mode", () => {
@@ -50,5 +55,26 @@ describe("MapCanvas", () => {
     );
 
     expect(screen.getByLabelText("Planned route corridor")).toBeTruthy();
+  });
+
+  it("renders a branded national highway atlas with seeded corridors and stop markers", () => {
+    process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY = "";
+
+    render(
+      <MapCanvas
+        stops={sampleHighwayStops}
+        selectedStopId="mumbai-pune-food-plaza"
+        onSelectStop={() => {}}
+      />,
+    );
+
+    expect(screen.getByRole("img", { name: /swachh national highway atlas/i })).toBeTruthy();
+    expect(screen.getByTestId("india-mainland-outline").getAttribute("d")).toContain("C210 342 193 369 172 407");
+    expect(screen.getByTestId("india-mainland-outline").getAttribute("stroke-width")).toBe("3");
+    expect(screen.getByTestId("india-northeast-outline").getAttribute("d")).toContain("C344 151 366 169 360 190");
+    expect(screen.getByText("Mumbai-Pune Expressway")).toBeTruthy();
+    expect(screen.getByText("NH48")).toBeTruthy();
+    expect(screen.getByText("Women-friendly verified")).toBeTruthy();
+    expect(screen.getAllByRole("button").map((button) => button.getAttribute("aria-label"))).toContain("Expressway Food Plaza");
   });
 });

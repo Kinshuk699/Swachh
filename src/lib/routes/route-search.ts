@@ -29,10 +29,6 @@ export function buildRouteSearchResponse(input: RouteSearchInput): RouteSearchRe
     hasHighwayName: input.highwayName.trim().length > 0,
   });
 
-  if (intent.requiresTripContext) {
-    return { intent, route: null, stops: [] };
-  }
-
   const relevantStops = filterHighwayRelevantStops(sampleHighwayStops) as HighwayStop[];
   const rankedStops = rankHighwayStops(relevantStops) as HighwayStop[];
 

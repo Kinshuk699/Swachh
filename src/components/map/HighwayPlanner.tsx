@@ -7,7 +7,6 @@ import {
   Clock,
   Coffee,
   Fuel,
-  LocateFixed,
   MapPinned,
   MessageCircle,
   Navigation,
@@ -27,7 +26,6 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { buildRouteSearchResponse, type RouteSearchResponse } from "@/lib/routes/route-search";
 import type { HighwayStop } from "@/lib/restrooms/sample-stops";
@@ -53,10 +51,9 @@ const submissionCategories = [
 type SubmissionCategory = (typeof submissionCategories)[number]["value"];
 
 export function HighwayPlanner() {
-  const [origin, setOrigin] = useState("Mumbai");
-  const [destination, setDestination] = useState("Pune");
-  const [highwayName, setHighwayName] = useState("Mumbai-Pune Expressway");
-  const [isInsideCity, setIsInsideCity] = useState(true);
+  const [origin, setOrigin] = useState("");
+  const [destination, setDestination] = useState("");
+  const [highwayName, setHighwayName] = useState("");
   const [searched, setSearched] = useState(true);
   const [selectedStopId, setSelectedStopId] = useState("mumbai-pune-food-plaza");
   const [plannedResponse, setPlannedResponse] = useState<RouteSearchResponse | null>(null);
@@ -76,17 +73,16 @@ export function HighwayPlanner() {
       origin,
       destination,
       highwayName,
-      isInsideCity,
-      distanceToHighwayMeters: isInsideCity ? 8_500 : 700,
+      isInsideCity: true,
+      distanceToHighwayMeters: 8_500,
     }),
-    [destination, highwayName, isInsideCity, origin],
+    [destination, highwayName, origin],
   );
   const curatedResponse = useMemo(() => buildRouteSearchResponse(searchInput), [searchInput]);
   const response = plannedResponse ?? curatedResponse;
 
   const stops = searched ? response.stops : [];
   const selectedStop = stops.find((stop) => stop.id === selectedStopId) ?? stops[0];
-  const routeMode = isInsideCity ? "city" : "highway";
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -115,25 +111,6 @@ export function HighwayPlanner() {
     } finally {
       setIsPlanning(false);
     }
-  }
-
-  function handleCityOnly() {
-    setIsInsideCity(true);
-    setDestination("");
-    setHighwayName("");
-    setSearched(true);
-    setPlannedResponse(null);
-    setPlannerError("");
-    setSelectedStopId("");
-  }
-
-  function handleHighwayMode() {
-    setIsInsideCity(false);
-    setHighwayName("NH48");
-    setSearched(true);
-    setPlannedResponse(null);
-    setPlannerError("");
-    setSelectedStopId(curatedResponse.stops[0]?.id ?? "mumbai-pune-food-plaza");
   }
 
   function clearPlannedRoute() {
@@ -200,36 +177,14 @@ export function HighwayPlanner() {
           <div className="space-y-4 border-b px-4 py-4">
             <Card size="sm" className="rounded-lg">
               <CardHeader>
-                <CardTitle>Route search</CardTitle>
-                <CardDescription>Origins, destinations, highways, expressways, and bypasses.</CardDescription>
+                <CardTitle>Plan a highway trip</CardTitle>
+                <CardDescription>From, to, or a known corridor. The atlas stays visible while you decide.</CardDescription>
               </CardHeader>
               <CardContent>
                 <form className="space-y-4" onSubmit={handleSubmit}>
-                  <Tabs
-                    value={routeMode}
-                    onValueChange={(value) => {
-                      if (value === "city") {
-                        handleCityOnly();
-                      } else {
-                        handleHighwayMode();
-                      }
-                    }}
-                  >
-                    <TabsList className="grid w-full grid-cols-2">
-                      <TabsTrigger value="city">
-                        <LocateFixed data-icon="inline-start" aria-hidden="true" />
-                        City start
-                      </TabsTrigger>
-                      <TabsTrigger value="highway">
-                        <Route data-icon="inline-start" aria-hidden="true" />
-                        On highway
-                      </TabsTrigger>
-                    </TabsList>
-                  </Tabs>
-
                   <FieldGroup>
                     <Field>
-                      <FieldLabel htmlFor="origin">Start</FieldLabel>
+                      <FieldLabel htmlFor="origin">From</FieldLabel>
                       <Input
                         id="origin"
                         value={origin}
@@ -242,7 +197,7 @@ export function HighwayPlanner() {
                     </Field>
 
                     <Field>
-                      <FieldLabel htmlFor="destination">Destination</FieldLabel>
+                      <FieldLabel htmlFor="destination">To</FieldLabel>
                       <Input
                         id="destination"
                         value={destination}
@@ -255,7 +210,7 @@ export function HighwayPlanner() {
                     </Field>
 
                     <Field>
-                      <FieldLabel htmlFor="highway">Highway</FieldLabel>
+                      <FieldLabel htmlFor="highway">Highway or corridor</FieldLabel>
                       <Input
                         id="highway"
                         value={highwayName}
@@ -271,7 +226,7 @@ export function HighwayPlanner() {
                   <div className="grid grid-cols-[1fr_auto] gap-2">
                     <Button type="submit" disabled={isPlanning}>
                       <Search data-icon="inline-start" aria-hidden="true" />
-                      {isPlanning ? "Planning" : "Plan stops"}
+                      {isPlanning ? "Finding stops" : "Find clean stops"}
                     </Button>
                     <Button type="button" variant="outline" size="icon" title="Submit missing stop" aria-label="Submit missing stop" onClick={openSubmissionForm}>
                       <Plus aria-hidden="true" />
@@ -317,18 +272,20 @@ export function HighwayPlanner() {
 
           <section className="min-h-0 flex-1 overflow-y-auto px-4 py-4" aria-label="Restroom stops">
             {response.intent.requiresTripContext ? (
-              <Alert className="border-amber-300 bg-amber-50 text-amber-950">
+              <Alert className="mb-3 border-amber-300 bg-amber-50 text-amber-950">
                 <Navigation aria-hidden="true" />
                 <AlertTitle>Where are you heading?</AlertTitle>
-                <AlertDescription className="text-amber-800">Add a destination or highway to see route-ready restroom stops.</AlertDescription>
+                <AlertDescription className="text-amber-800">Add a destination or highway to rank these atlas stops for your route.</AlertDescription>
               </Alert>
-            ) : (
+            ) : null}
+
+            {stops.length > 0 ? (
               <div className="space-y-3">
                 {stops.map((stop) => (
                   <StopCard key={stop.id} stop={stop} selected={selectedStop?.id === stop.id} onSelect={() => setSelectedStopId(stop.id)} />
                 ))}
               </div>
-            )}
+            ) : null}
           </section>
         </aside>
 

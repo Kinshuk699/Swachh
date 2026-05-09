@@ -13,6 +13,18 @@ describe("HighwayPlanner", () => {
     vi.restoreAllMocks();
   });
 
+  it("starts with a simplified highway trip form and visible atlas stops", () => {
+    render(<HighwayPlanner />);
+
+    expect(screen.getByLabelText("From")).toBeTruthy();
+    expect(screen.getByLabelText("To")).toBeTruthy();
+    expect(screen.getByLabelText("Highway or corridor")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Find clean stops" })).toBeTruthy();
+    expect(screen.queryByRole("tab", { name: /city start/i })).toBeNull();
+    expect(screen.queryByRole("tab", { name: /on highway/i })).toBeNull();
+    expect(screen.getAllByText("Expressway Food Plaza").length).toBeGreaterThan(0);
+  });
+
   it("plans stops through the route search API and displays live route distance", async () => {
     let capturedRequest: RequestInit | undefined;
     const fetchSpy = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
@@ -35,7 +47,10 @@ describe("HighwayPlanner", () => {
     vi.stubGlobal("fetch", fetchSpy);
 
     render(<HighwayPlanner />);
-    fireEvent.click(screen.getByRole("button", { name: "Plan stops" }));
+    fireEvent.change(screen.getByLabelText("From"), { target: { value: "Mumbai" } });
+    fireEvent.change(screen.getByLabelText("To"), { target: { value: "Pune" } });
+    fireEvent.change(screen.getByLabelText("Highway or corridor"), { target: { value: "Mumbai-Pune Expressway" } });
+    fireEvent.click(screen.getByRole("button", { name: "Find clean stops" }));
 
     await waitFor(() => expect(fetchSpy).toHaveBeenCalledWith("/api/routes/search", expect.any(Object)));
 
