@@ -4,6 +4,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { sampleHighwayStops } from "@/lib/restrooms/sample-stops";
 import { HighwayPlanner } from "./HighwayPlanner";
 
+vi.mock("./MapCanvas", () => ({
+  MapCanvas: ({ routePolyline }: { routePolyline?: string }) => <div data-route-polyline={routePolyline} data-testid="map-canvas" />,
+}));
+
 describe("HighwayPlanner", () => {
   afterEach(() => {
     vi.restoreAllMocks();
@@ -42,5 +46,6 @@ describe("HighwayPlanner", () => {
       highwayName: "Mumbai-Pune Expressway",
     });
     expect(await screen.findByText("148 km")).toBeTruthy();
+    expect(screen.getByTestId("map-canvas").getAttribute("data-route-polyline")).toBe("encoded-route");
   });
 });

@@ -271,7 +271,12 @@ export function HighwayPlanner() {
         </aside>
 
         <section className="grid min-h-[640px] grid-rows-[1fr_auto] bg-slate-200">
-          <MapCanvas stops={stops} selectedStopId={selectedStop?.id ?? ""} onSelectStop={setSelectedStopId} />
+          <MapCanvas
+            stops={stops}
+            selectedStopId={selectedStop?.id ?? ""}
+            routePolyline={response.route?.encodedPolyline}
+            onSelectStop={setSelectedStopId}
+          />
           <div className="border-t border-slate-300 bg-white px-5 py-4">
             <div className="grid gap-4 md:grid-cols-[1fr_auto] md:items-center">
               <div>

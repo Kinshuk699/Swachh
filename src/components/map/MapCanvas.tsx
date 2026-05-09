@@ -1,6 +1,6 @@
 "use client";
 
-import { APIProvider, Map, Marker } from "@vis.gl/react-google-maps";
+import { APIProvider, Map, Marker, Polyline } from "@vis.gl/react-google-maps";
 import { MapPinned } from "lucide-react";
 
 import type { HighwayStop } from "@/lib/restrooms/sample-stops";
@@ -8,6 +8,7 @@ import type { HighwayStop } from "@/lib/restrooms/sample-stops";
 type MapCanvasProps = {
   stops: HighwayStop[];
   selectedStopId: string;
+  routePolyline?: string;
   onSelectStop: (stopId: string) => void;
 };
 
@@ -18,7 +19,7 @@ const fallbackPositions = [
   { left: "78%", top: "44%" },
 ];
 
-export function MapCanvas({ stops, selectedStopId, onSelectStop }: MapCanvasProps) {
+export function MapCanvas({ stops, selectedStopId, routePolyline, onSelectStop }: MapCanvasProps) {
   const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
 
   if (apiKey) {
@@ -33,6 +34,16 @@ export function MapCanvas({ stops, selectedStopId, onSelectStop }: MapCanvasProp
           mapTypeControl={false}
           streetViewControl={false}
         >
+          {routePolyline ? (
+            <Polyline
+              encodedPath={routePolyline}
+              strokeColor="#0f766e"
+              strokeOpacity={0.85}
+              strokeWeight={5}
+              clickable={false}
+              zIndex={1}
+            />
+          ) : null}
           {stops.map((stop) => (
             <Marker
               key={stop.id}
@@ -52,6 +63,13 @@ export function MapCanvas({ stops, selectedStopId, onSelectStop }: MapCanvasProp
       <div className="absolute left-[12%] top-[18%] h-[70%] w-[76%] rounded-[45%] border border-teal-800/10 bg-emerald-50/70" />
       <div className="absolute left-[15%] top-[55%] h-3 w-[72%] -rotate-6 rounded-full bg-slate-700 shadow-sm" />
       <div className="absolute left-[18%] top-[57%] h-1 w-[66%] -rotate-6 rounded-full bg-amber-300" />
+      {routePolyline ? (
+        <div
+          aria-label="Planned route corridor"
+          className="absolute left-[15%] top-[54%] h-6 w-[73%] -rotate-6 rounded-full border-2 border-teal-700/70 bg-teal-500/15 shadow-[0_0_0_6px_rgba(20,184,166,0.12)]"
+          role="img"
+        />
+      ) : null}
       <div className="absolute left-[22%] top-[35%] h-2 w-[50%] rotate-12 rounded-full bg-sky-700/70" />
       <div className="absolute bottom-4 left-4 flex items-center gap-2 rounded-md border border-slate-300 bg-white/90 px-3 py-2 text-sm font-medium text-slate-700 shadow-soft">
         <MapPinned className="h-4 w-4 text-teal-700" aria-hidden="true" />
