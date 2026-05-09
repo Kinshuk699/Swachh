@@ -46,11 +46,37 @@ alter table public.restroom_submissions enable row level security;
 alter table public.restroom_reports enable row level security;
 alter table public.admin_users enable row level security;
 
+create or replace function public.is_admin()
+returns boolean
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select exists (
+    select 1
+    from public.admin_users
+    where user_id = auth.uid()
+  );
+$$;
+
+grant execute on function public.is_admin() to anon, authenticated;
+
+drop policy if exists "profiles are readable" on public.profiles;
+drop policy if exists "users update own profile" on public.profiles;
+drop policy if exists "approved restroom submissions are public" on public.restroom_submissions;
+drop policy if exists "authenticated users create restroom submissions" on public.restroom_submissions;
+drop policy if exists "users update own pending submissions" on public.restroom_submissions;
+drop policy if exists "admins manage restroom submissions" on public.restroom_submissions;
+drop policy if exists "authenticated users create reports" on public.restroom_reports;
+drop policy if exists "admins read reports" on public.restroom_reports;
+drop policy if exists "admins read admin list" on public.admin_users;
+
 create policy "profiles are readable" on public.profiles for select using (true);
 create policy "users update own profile" on public.profiles for update using (auth.uid() = id);
 
 create policy "approved restroom submissions are public" on public.restroom_submissions
-  for select using (status = 'approved' or created_by = auth.uid() or exists (select 1 from public.admin_users where user_id = auth.uid()));
+  for select using (status = 'approved' or created_by = auth.uid() or public.is_admin());
 
 create policy "authenticated users create restroom submissions" on public.restroom_submissions
   for insert with check (auth.role() = 'authenticated' and created_by = auth.uid());
@@ -59,13 +85,13 @@ create policy "users update own pending submissions" on public.restroom_submissi
   for update using (created_by = auth.uid() and status = 'pending');
 
 create policy "admins manage restroom submissions" on public.restroom_submissions
-  for all using (exists (select 1 from public.admin_users where user_id = auth.uid()));
+  for all using (public.is_admin());
 
 create policy "authenticated users create reports" on public.restroom_reports
   for insert with check (auth.role() = 'authenticated' and created_by = auth.uid());
 
 create policy "admins read reports" on public.restroom_reports
-  for select using (exists (select 1 from public.admin_users where user_id = auth.uid()));
+  for select using (public.is_admin());
 
 create policy "admins read admin list" on public.admin_users
-  for select using (exists (select 1 from public.admin_users where user_id = auth.uid()));
+  for select using (public.is_admin());
