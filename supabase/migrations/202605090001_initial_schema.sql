@@ -65,6 +65,7 @@ grant execute on function public.is_admin() to anon, authenticated;
 drop policy if exists "profiles are readable" on public.profiles;
 drop policy if exists "users update own profile" on public.profiles;
 drop policy if exists "approved restroom submissions are public" on public.restroom_submissions;
+drop policy if exists "public can create pending restroom submissions" on public.restroom_submissions;
 drop policy if exists "authenticated users create restroom submissions" on public.restroom_submissions;
 drop policy if exists "users update own pending submissions" on public.restroom_submissions;
 drop policy if exists "admins manage restroom submissions" on public.restroom_submissions;
@@ -77,6 +78,9 @@ create policy "users update own profile" on public.profiles for update using (au
 
 create policy "approved restroom submissions are public" on public.restroom_submissions
   for select using (status = 'approved' or created_by = auth.uid() or public.is_admin());
+
+create policy "public can create pending restroom submissions" on public.restroom_submissions
+  for insert with check (auth.role() = 'anon' and created_by is null and status = 'pending');
 
 create policy "authenticated users create restroom submissions" on public.restroom_submissions
   for insert with check (auth.role() = 'authenticated' and created_by = auth.uid());

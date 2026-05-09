@@ -29,6 +29,16 @@ const filterOptions = [
   { label: "Food", icon: Coffee },
 ];
 
+const submissionCategories = [
+  { value: "fuel_station", label: "Fuel station" },
+  { value: "food_plaza", label: "Food plaza" },
+  { value: "toll_plaza", label: "Toll plaza" },
+  { value: "public_restroom", label: "Public restroom" },
+  { value: "restaurant_proxy", label: "Restaurant" },
+] as const;
+
+type SubmissionCategory = (typeof submissionCategories)[number]["value"];
+
 export function HighwayPlanner() {
   const [origin, setOrigin] = useState("Mumbai");
   const [destination, setDestination] = useState("Pune");
@@ -39,6 +49,14 @@ export function HighwayPlanner() {
   const [plannedResponse, setPlannedResponse] = useState<RouteSearchResponse | null>(null);
   const [isPlanning, setIsPlanning] = useState(false);
   const [plannerError, setPlannerError] = useState("");
+  const [showSubmissionForm, setShowSubmissionForm] = useState(false);
+  const [submissionName, setSubmissionName] = useState("");
+  const [submissionCategory, setSubmissionCategory] = useState<SubmissionCategory>("fuel_station");
+  const [submissionLatitude, setSubmissionLatitude] = useState("");
+  const [submissionLongitude, setSubmissionLongitude] = useState("");
+  const [submissionHighwayName, setSubmissionHighwayName] = useState("Mumbai-Pune Expressway");
+  const [submissionMessage, setSubmissionMessage] = useState("");
+  const [isSubmittingStop, setIsSubmittingStop] = useState(false);
 
   const searchInput = useMemo(
     () => ({
@@ -107,6 +125,45 @@ export function HighwayPlanner() {
   function clearPlannedRoute() {
     setPlannedResponse(null);
     setPlannerError("");
+  }
+
+  function openSubmissionForm() {
+    setShowSubmissionForm(true);
+    setSubmissionMessage("");
+    setSubmissionHighwayName(highwayName || selectedStop?.highway || "");
+  }
+
+  async function handleStopSubmission(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setIsSubmittingStop(true);
+    setSubmissionMessage("");
+
+    try {
+      const apiResponse = await fetch("/api/restrooms/submissions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: submissionName,
+          category: submissionCategory,
+          latitude: Number(submissionLatitude),
+          longitude: Number(submissionLongitude),
+          highwayName: submissionHighwayName,
+        }),
+      });
+
+      if (!apiResponse.ok) {
+        throw new Error("Submission failed");
+      }
+
+      setSubmissionName("");
+      setSubmissionLatitude("");
+      setSubmissionLongitude("");
+      setSubmissionMessage("Submission saved for moderation.");
+    } catch {
+      setSubmissionMessage("Submission could not be saved.");
+    } finally {
+      setIsSubmittingStop(false);
+    }
   }
 
   return (
@@ -209,6 +266,7 @@ export function HighwayPlanner() {
                 type="button"
                 title="Submit stop"
                 aria-label="Submit stop"
+                onClick={openSubmissionForm}
                 className="flex h-10 w-10 items-center justify-center rounded-md border border-slate-300 text-slate-700 hover:bg-slate-50"
               >
                 <Plus className="h-5 w-5" aria-hidden="true" />
@@ -227,6 +285,92 @@ export function HighwayPlanner() {
 
             {plannerError ? <p className="text-sm font-medium text-amber-700">{plannerError}</p> : null}
           </form>
+
+          {showSubmissionForm ? (
+            <form className="space-y-3 border-b border-slate-200 bg-slate-50 px-5 py-4" onSubmit={handleStopSubmission}>
+              <div>
+                <h2 className="text-sm font-semibold text-slate-950">Submit restroom stop</h2>
+                <p className="mt-1 text-xs text-slate-600">New stops are held for moderation before appearing publicly.</p>
+              </div>
+
+              <label className="block text-sm font-medium text-slate-700" htmlFor="submission-name">
+                Stop name
+              </label>
+              <input
+                id="submission-name"
+                value={submissionName}
+                onChange={(event) => setSubmissionName(event.target.value)}
+                className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-slate-950"
+                placeholder="Fuel pump, toll plaza, food court"
+              />
+
+              <label className="block text-sm font-medium text-slate-700" htmlFor="submission-category">
+                Category
+              </label>
+              <select
+                id="submission-category"
+                value={submissionCategory}
+                onChange={(event) => setSubmissionCategory(event.target.value as SubmissionCategory)}
+                className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-slate-950"
+              >
+                {submissionCategories.map((category) => (
+                  <option key={category.value} value={category.value}>
+                    {category.label}
+                  </option>
+                ))}
+              </select>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700" htmlFor="submission-latitude">
+                    Latitude
+                  </label>
+                  <input
+                    id="submission-latitude"
+                    inputMode="decimal"
+                    value={submissionLatitude}
+                    onChange={(event) => setSubmissionLatitude(event.target.value)}
+                    className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-slate-950"
+                    placeholder="18.765"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700" htmlFor="submission-longitude">
+                    Longitude
+                  </label>
+                  <input
+                    id="submission-longitude"
+                    inputMode="decimal"
+                    value={submissionLongitude}
+                    onChange={(event) => setSubmissionLongitude(event.target.value)}
+                    className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-slate-950"
+                    placeholder="73.377"
+                  />
+                </div>
+              </div>
+
+              <label className="block text-sm font-medium text-slate-700" htmlFor="submission-highway">
+                Highway
+              </label>
+              <input
+                id="submission-highway"
+                value={submissionHighwayName}
+                onChange={(event) => setSubmissionHighwayName(event.target.value)}
+                className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-slate-950"
+                placeholder="NH48, expressway, bypass"
+              />
+
+              <button
+                type="submit"
+                disabled={isSubmittingStop}
+                className="flex w-full items-center justify-center rounded-md bg-teal-700 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-800"
+              >
+                {isSubmittingStop ? "Sending" : "Send for review"}
+              </button>
+
+              {submissionMessage ? <p className="text-sm font-medium text-teal-800">{submissionMessage}</p> : null}
+            </form>
+          ) : null}
 
           <div className="flex flex-wrap gap-2 border-b border-slate-200 px-5 py-4">
             {filterOptions.map((option) => {

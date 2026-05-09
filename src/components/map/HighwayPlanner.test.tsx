@@ -48,4 +48,36 @@ describe("HighwayPlanner", () => {
     expect(await screen.findByText("148 km")).toBeTruthy();
     expect(screen.getByTestId("map-canvas").getAttribute("data-route-polyline")).toBe("encoded-route");
   });
+
+  it("submits a new highway restroom stop for moderation", async () => {
+    let capturedRequest: RequestInit | undefined;
+    const fetchSpy = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      if (String(url) === "/api/restrooms/submissions") {
+        capturedRequest = init;
+        return new Response(JSON.stringify({ ok: true, status: "pending" }), { status: 201 });
+      }
+
+      return new Response(JSON.stringify({ intent: { mode: "plan-route", requiresTripContext: false }, route: null, stops: [] }), {
+        status: 200,
+      });
+    });
+    vi.stubGlobal("fetch", fetchSpy);
+
+    render(<HighwayPlanner />);
+    fireEvent.click(screen.getByRole("button", { name: "Submit stop" }));
+    fireEvent.change(screen.getByLabelText("Stop name"), { target: { value: "Clean Fuel Stop" } });
+    fireEvent.change(screen.getByLabelText("Latitude"), { target: { value: "18.765" } });
+    fireEvent.change(screen.getByLabelText("Longitude"), { target: { value: "73.377" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send for review" }));
+
+    await waitFor(() => expect(fetchSpy).toHaveBeenCalledWith("/api/restrooms/submissions", expect.any(Object)));
+    expect(JSON.parse(String(capturedRequest?.body))).toMatchObject({
+      name: "Clean Fuel Stop",
+      category: "fuel_station",
+      latitude: 18.765,
+      longitude: 73.377,
+      highwayName: "Mumbai-Pune Expressway",
+    });
+    expect(await screen.findByText("Submission saved for moderation.")).toBeTruthy();
+  });
 });

@@ -21,4 +21,11 @@ describe("initial Supabase migration", () => {
 
     expect(recursivePolicies).toEqual([]);
   });
+
+  it("allows public submissions only as pending moderation rows", () => {
+    expect(migrationSql).toContain('create policy "public can create pending restroom submissions"');
+    expect(migrationSql).toContain("auth.role() = 'anon'");
+    expect(migrationSql).toContain("status = 'pending'");
+    expect(migrationSql).toContain("created_by is null");
+  });
 });
