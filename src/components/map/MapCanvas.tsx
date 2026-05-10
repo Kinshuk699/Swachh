@@ -14,10 +14,11 @@ type MapCanvasProps = {
   onSelectStop: (stopId: string) => void;
 };
 
-type PreviewResponse = {
+type CuratedPlacesResponse = {
   places?: HighwayStop[];
-  searchedJobs?: number;
-  totalJobs?: number;
+  storedRowsRead?: number;
+  placeDetailsRequests?: number;
+  textSearchRequests?: number;
   capped?: boolean;
 };
 
@@ -50,9 +51,9 @@ const highwayFocusedMapStyles = [
 
 export function MapCanvas({ stops, routePolyline, onSelectStop }: MapCanvasProps) {
   const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
-  const [previewStops, setPreviewStops] = useState<HighwayStop[]>([]);
-  const [previewMeta, setPreviewMeta] = useState<Pick<PreviewResponse, "searchedJobs" | "totalJobs" | "capped">>({});
-  const [previewLoading, setPreviewLoading] = useState(false);
+  const [curatedStops, setCuratedStops] = useState<HighwayStop[]>([]);
+  const [curatedMeta, setCuratedMeta] = useState<Pick<CuratedPlacesResponse, "storedRowsRead" | "placeDetailsRequests" | "textSearchRequests" | "capped">>({});
+  const [curatedLoading, setCuratedLoading] = useState(false);
   const [activeInfoStopId, setActiveInfoStopId] = useState<string | null>(null);
   const [placeDetailsById, setPlaceDetailsById] = useState<Record<string, GooglePlaceDetails>>({});
 
@@ -62,26 +63,31 @@ export function MapCanvas({ stops, routePolyline, onSelectStop }: MapCanvasProps
     }
 
     let cancelled = false;
-    setPreviewLoading(true);
+    setCuratedLoading(true);
 
-    fetch("/api/google-curated-places/preview?limit=40")
+    fetch("/api/google-curated-places?limit=40")
       .then((response) => (response.ok ? response.json() : null))
-      .then((body: PreviewResponse | null) => {
+      .then((body: CuratedPlacesResponse | null) => {
         if (cancelled || !body) {
           return;
         }
 
-        setPreviewStops(body.places ?? []);
-        setPreviewMeta({ searchedJobs: body.searchedJobs, totalJobs: body.totalJobs, capped: body.capped });
+        setCuratedStops(body.places ?? []);
+        setCuratedMeta({
+          storedRowsRead: body.storedRowsRead,
+          placeDetailsRequests: body.placeDetailsRequests,
+          textSearchRequests: body.textSearchRequests,
+          capped: body.capped,
+        });
       })
       .catch(() => {
         if (!cancelled) {
-          setPreviewStops([]);
+          setCuratedStops([]);
         }
       })
       .finally(() => {
         if (!cancelled) {
-          setPreviewLoading(false);
+          setCuratedLoading(false);
         }
       });
 
@@ -90,7 +96,7 @@ export function MapCanvas({ stops, routePolyline, onSelectStop }: MapCanvasProps
     };
   }, [apiKey]);
 
-  const mapStops = useMemo(() => dedupeStops([...stops, ...previewStops]), [previewStops, stops]);
+  const mapStops = useMemo(() => dedupeStops([...stops, ...curatedStops]), [curatedStops, stops]);
   const activeStop = mapStops.find((stop) => stop.id === activeInfoStopId) ?? null;
   const activeDetails = activeStop?.placeId ? placeDetailsById[activeStop.placeId] : undefined;
 
@@ -173,26 +179,26 @@ export function MapCanvas({ stops, routePolyline, onSelectStop }: MapCanvasProps
       <div className="pointer-events-none absolute left-4 top-4 max-w-[min(24rem,calc(100%-2rem))] rounded-lg border bg-white/92 px-4 py-3 text-stone-950 shadow-sm backdrop-blur">
         <div className="flex items-center gap-2 text-sm font-semibold">
           <MapPinned className="size-4 text-red-600" aria-hidden="true" />
-          Google Maps highway view
+          Highway restroom map
         </div>
-        <p className="mt-1 text-xs leading-5 text-stone-600">Normal Google basemap with darker highway styling and verified stop markers.</p>
+        <p className="mt-1 text-xs leading-5 text-stone-600">Clean stop options along national highway corridors.</p>
         <div className="mt-2 flex flex-wrap gap-2 text-[11px] font-medium">
-          <span className="rounded-full bg-red-100 px-2 py-1 text-red-800">Verified stop</span>
-          <span className="rounded-full bg-yellow-100 px-2 py-1 text-yellow-900">Paid premium</span>
+          <span className="rounded-full bg-yellow-100 px-2 py-1 text-yellow-900">Premium restroom</span>
+          <span className="rounded-full bg-emerald-100 px-2 py-1 text-emerald-800">Likely clean stop</span>
         </div>
       </div>
 
       <div className="pointer-events-none absolute bottom-4 left-4 max-w-[min(26rem,calc(100%-2rem))] rounded-lg border bg-white/92 px-4 py-3 text-xs text-stone-700 shadow-sm backdrop-blur">
         <div className="flex items-center gap-2 font-medium text-stone-950">
-          {previewLoading ? <Loader2 className="size-3.5 animate-spin" aria-hidden="true" /> : <ShieldCheck className="size-3.5 text-emerald-700" aria-hidden="true" />}
-          <span>{mapStops.length} map markers</span>
+          {curatedLoading ? <Loader2 className="size-3.5 animate-spin" aria-hidden="true" /> : <ShieldCheck className="size-3.5 text-emerald-700" aria-hidden="true" />}
+          <span>{mapStops.length} highway stops</span>
         </div>
         <p className="mt-1 leading-5">
-          {previewMeta.totalJobs
-            ? `Preview resolved ${previewMeta.searchedJobs ?? 0} of ${previewMeta.totalJobs} bounded Google searches. Full discovery is kept off auto-load to avoid surprise API spend.`
-            : routePolyline
-              ? "Route loaded. Click a marker for Google place details."
-              : "Click a marker for Google place details and opening hours."}
+          {routePolyline
+            ? "Route loaded. Click a marker for details and directions."
+            : curatedMeta.storedRowsRead
+              ? "Click a marker for hours, access type, and directions."
+              : "Click a marker for hours, access type, and directions."}
         </p>
       </div>
     </div>
@@ -204,6 +210,7 @@ function PlaceInfoWindow({ stop, details }: { stop: HighwayStop; details?: Googl
   const displayName = details?.displayName ?? stop.googlePlaceName ?? stop.name;
   const openNow = details?.openNow ?? stop.openNow;
   const googleMapsUri = details?.googleMapsUri ?? stop.googleMapsUri;
+  const cleanlinessLabel = stop.cleanlinessLabel ?? (isPremiumPaidStop(stop) ? "Premium restroom" : "Highway restroom stop");
 
   return (
     <div className="max-w-xs space-y-3 text-sm text-stone-800">
@@ -214,6 +221,9 @@ function PlaceInfoWindow({ stop, details }: { stop: HighwayStop; details?: Googl
       <div className="flex flex-wrap gap-2">
         <span className={`rounded-full px-2 py-1 text-xs font-medium ${openNow ? "bg-emerald-100 text-emerald-800" : "bg-stone-100 text-stone-700"}`}>
           {openNow ? "Open now" : "Check hours"}
+        </span>
+        <span className="rounded-full bg-emerald-100 px-2 py-1 text-xs font-medium text-emerald-800">
+          {cleanlinessLabel}
         </span>
         <span className={`rounded-full px-2 py-1 text-xs font-medium ${isPremiumPaidStop(stop) ? "bg-yellow-100 text-yellow-900" : "bg-red-100 text-red-800"}`}>
           {isPremiumPaidStop(stop) ? "Paid premium lounge" : stop.priceLabel}

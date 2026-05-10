@@ -17,6 +17,23 @@ export type ProxyType =
   | "premium_lavatory"
   | "dhaba_proxy";
 
+export type CleanlinessTier = "tier_1" | "tier_2" | "tier_3" | "tier_4";
+
+export type SourceCategory =
+  | "premium_restroom"
+  | "official_wayside_amenity"
+  | "premium_fuel_program"
+  | "organized_restaurant"
+  | "food_plaza"
+  | "dhaba_candidate"
+  | "generic_candidate";
+
+export type CleanToiletClassification = {
+  cleanlinessTier: CleanlinessTier;
+  sourceCategory: SourceCategory;
+  sourceEvidence: string;
+};
+
 export type HygieneProxyBrand = {
   brandName: string;
   region: string;
@@ -60,6 +77,9 @@ export type GoogleTextSearchJob = {
   proxyType: ProxyType;
   confidence: number;
   notes?: string;
+  cleanlinessTier?: CleanlinessTier;
+  sourceCategory?: SourceCategory;
+  sourceEvidence?: string;
   pageSize: number;
   regionCode: "IN";
   fieldMask: typeof googleTextSearchFieldMask;
@@ -89,6 +109,9 @@ export type DiscoveredHighwayPlace = {
   confidence: number;
   distanceFromHighwayMeters: number;
   source: "google_places_text_search";
+  cleanlinessTier?: CleanlinessTier;
+  sourceCategory?: SourceCategory;
+  sourceEvidence?: string;
   localNotes?: string;
 };
 
@@ -100,6 +123,7 @@ export function buildHighwayPlacesSearchJobs(input: {
   const brandJobs: GoogleTextSearchJob[] = input.proxyBrands.flatMap((brand) =>
     input.corridors.flatMap((corridor) =>
       corridor.anchors.map((anchor, anchorIndex) => ({
+        ...classifyCleanToiletCandidate({ seedName: brand.brandName, proxyType: brand.proxyType, notes: brand.notes }),
         id: `proxy-brand:${slugify(brand.brandName)}:${corridor.id}:${anchorIndex}`,
         sourceKind: "proxy_brand" as const,
         textQuery: compactJoin([brand.brandName, corridor.highwayName, corridor.routeContext, "India"]),
@@ -124,6 +148,7 @@ export function buildHighwayPlacesSearchJobs(input: {
   );
 
   const curatedJobs: GoogleTextSearchJob[] = input.curatedStopCandidates.map((candidate) => ({
+    ...classifyCleanToiletCandidate({ seedName: candidate.name, proxyType: candidate.proxyType, notes: candidate.notes }),
     id: `curated-stop:${slugify(candidate.name)}:${slugify(candidate.highwayContext)}:${slugify(candidate.routeContext)}`,
     sourceKind: "curated_stop" as const,
     textQuery: compactJoin([
@@ -167,6 +192,8 @@ export function filterHighwayPlaceMatches(input: {
         return [];
       }
 
+      const classification = getJobCleanToiletClassification(input.job);
+
       return [
         {
           placeId: place.id,
@@ -178,6 +205,7 @@ export function filterHighwayPlaceMatches(input: {
           confidence: input.job.confidence,
           distanceFromHighwayMeters,
           source: "google_places_text_search",
+          ...classification,
           localNotes: input.job.notes,
         },
       ];
@@ -210,8 +238,101 @@ export function toStoredCuratedPlaceReference(place: DiscoveredHighwayPlace): St
   });
 }
 
+export function classifyCleanToiletCandidate(input: {
+  seedName: string;
+  proxyType: ProxyType;
+  notes?: string;
+}): CleanToiletClassification {
+  const seedName = input.seedName.toLowerCase();
+  const evidence = input.notes ?? input.seedName;
+
+  if (
+    input.proxyType === "premium_lavatory" ||
+    includesAny(seedName, ["lavato", "premium lavatory", "premium restroom"])
+  ) {
+    return { cleanlinessTier: "tier_1", sourceCategory: "premium_restroom", sourceEvidence: evidence };
+  }
+
+  if (
+    includesAny(seedName, [
+      "nhai wayside",
+      "nhlml wayside",
+      "cube stop",
+      "path recharge",
+      "official expressway service",
+      "samruddhi",
+      "purvanchal expressway",
+      "bundelkhand expressway",
+      "yamuna expressway facilities",
+    ])
+  ) {
+    return { cleanlinessTier: "tier_1", sourceCategory: "official_wayside_amenity", sourceEvidence: evidence };
+  }
+
+  if (
+    input.proxyType === "fuel_cafe" ||
+    includesAny(seedName, [
+      "hpcl focus",
+      "club hp",
+      "bpcl pure for sure",
+      "pure for sure platinum",
+      "bpcl ghar",
+      "indian oil swagat",
+      "indian oil coco",
+      "jio-bp",
+      "shell select",
+      "shell cafe",
+      "wild bean cafe",
+    ])
+  ) {
+    return { cleanlinessTier: "tier_2", sourceCategory: "premium_fuel_program", sourceEvidence: evidence };
+  }
+
+  if (input.proxyType === "food_plaza") {
+    return { cleanlinessTier: "tier_3", sourceCategory: "food_plaza", sourceEvidence: evidence };
+  }
+
+  if (input.proxyType === "qsr" || input.proxyType === "restaurant_proxy") {
+    return { cleanlinessTier: "tier_3", sourceCategory: "organized_restaurant", sourceEvidence: evidence };
+  }
+
+  if (input.proxyType === "dhaba_proxy") {
+    return { cleanlinessTier: "tier_4", sourceCategory: "dhaba_candidate", sourceEvidence: evidence };
+  }
+
+  return { cleanlinessTier: "tier_4", sourceCategory: "generic_candidate", sourceEvidence: evidence };
+}
+
+export function getPlaceCleanToiletClassification(place: DiscoveredHighwayPlace): CleanToiletClassification {
+  if (place.cleanlinessTier && place.sourceCategory && place.sourceEvidence) {
+    return {
+      cleanlinessTier: place.cleanlinessTier,
+      sourceCategory: place.sourceCategory,
+      sourceEvidence: place.sourceEvidence,
+    };
+  }
+
+  return classifyCleanToiletCandidate({ seedName: place.seedName, proxyType: place.proxyType, notes: place.localNotes });
+}
+
 function scoreDiscoveredPlace(place: DiscoveredHighwayPlace): number {
   return place.confidence * 100 - place.distanceFromHighwayMeters / 100;
+}
+
+function getJobCleanToiletClassification(job: GoogleTextSearchJob): CleanToiletClassification {
+  if (job.cleanlinessTier && job.sourceCategory && job.sourceEvidence) {
+    return {
+      cleanlinessTier: job.cleanlinessTier,
+      sourceCategory: job.sourceCategory,
+      sourceEvidence: job.sourceEvidence,
+    };
+  }
+
+  return classifyCleanToiletCandidate({ seedName: job.seedName, proxyType: job.proxyType, notes: job.notes });
+}
+
+function includesAny(input: string, needles: string[]): boolean {
+  return needles.some((needle) => input.includes(needle));
 }
 
 function compactJoin(parts: Array<string | undefined>, separator = " "): string {

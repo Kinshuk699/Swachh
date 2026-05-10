@@ -10,7 +10,10 @@ import {
 type ImportArgs = {
   dryRun: boolean;
   jobLimit?: number;
+  maxTextSearchRequests?: number;
 };
+
+const defaultTextSearchMonthlyFreeCap = 35_000;
 
 loadEnvFile(".env.local");
 
@@ -18,10 +21,15 @@ const args = parseArgs(process.argv.slice(2));
 const googleApiKey = requireEnv("GOOGLE_MAPS_SERVER_API_KEY");
 const supabaseUrl = requireEnv("NEXT_PUBLIC_SUPABASE_URL");
 const serviceRoleKey = requireEnv("SUPABASE_SERVICE_ROLE_KEY");
+const maxTextSearchRequests =
+  args.maxTextSearchRequests ??
+  readPositiveIntegerEnv("GOOGLE_PLACES_TEXT_SEARCH_MONTHLY_REMAINING") ??
+  defaultTextSearchMonthlyFreeCap;
 
 const discovery = await discoverGoogleCuratedPlaces({
   apiKey: googleApiKey,
   jobLimit: args.jobLimit,
+  maxTextSearchRequests,
   onProgress: ({ searchedJobs, totalJobs, matches, failures }) => {
     if (searchedJobs === 1 || searchedJobs % 100 === 0 || searchedJobs === totalJobs) {
       console.log(`searched=${searchedJobs}/${totalJobs} raw_matches=${matches} failures=${failures}`);
@@ -35,6 +43,7 @@ console.log(
   JSON.stringify(
     {
       dryRun: args.dryRun,
+      maxTextSearchRequests,
       totalJobs: discovery.totalJobs,
       searchedJobs: discovery.searchedJobs,
       missingCorridorJobs: discovery.missingCorridorJobs,
@@ -73,13 +82,24 @@ console.log(JSON.stringify({ ok: true, upsertedRows }, null, 2));
 function parseArgs(argv: string[]): ImportArgs {
   const dryRun = argv.includes("--dry-run");
   const jobLimitArg = argv.find((arg) => arg.startsWith("--job-limit="));
+  const maxTextSearchRequestsArg = argv.find((arg) => arg.startsWith("--max-text-search-requests="));
   const jobLimit = jobLimitArg ? Number(jobLimitArg.slice("--job-limit=".length)) : undefined;
+  const maxTextSearchRequests = maxTextSearchRequestsArg
+    ? Number(maxTextSearchRequestsArg.slice("--max-text-search-requests=".length))
+    : undefined;
 
   if (typeof jobLimit === "number" && (!Number.isInteger(jobLimit) || jobLimit <= 0)) {
     throw new Error("--job-limit must be a positive integer.");
   }
 
-  return { dryRun, jobLimit };
+  if (
+    typeof maxTextSearchRequests === "number" &&
+    (!Number.isInteger(maxTextSearchRequests) || maxTextSearchRequests <= 0)
+  ) {
+    throw new Error("--max-text-search-requests must be a positive integer.");
+  }
+
+  return { dryRun, jobLimit, maxTextSearchRequests };
 }
 
 function loadEnvFile(path: string) {
@@ -113,6 +133,22 @@ function requireEnv(name: string): string {
   }
 
   return value;
+}
+
+function readPositiveIntegerEnv(name: string): number | undefined {
+  const value = process.env[name];
+
+  if (!value) {
+    return undefined;
+  }
+
+  const parsedValue = Number(value);
+
+  if (!Number.isInteger(parsedValue) || parsedValue <= 0) {
+    throw new Error(`${name} must be a positive integer.`);
+  }
+
+  return parsedValue;
 }
 
 function chunk<T>(items: T[], size: number): T[][] {

@@ -43,6 +43,9 @@ describe("buildHighwayPlacesSearchJobs", () => {
       regionCode: "IN",
       pageSize: 10,
       fieldMask: googleTextSearchFieldMask,
+      cleanlinessTier: "tier_2",
+      sourceCategory: "premium_fuel_program",
+      sourceEvidence: "Clean fuel station restroom proxy",
       locationBias: {
         circle: {
           center: { latitude: 12.5186, longitude: 78.2137 },
@@ -94,6 +97,9 @@ describe("filterHighwayPlaceMatches", () => {
         region: "South India",
         proxyType: "fuel_cafe",
         confidence: 0.78,
+        cleanlinessTier: "tier_2",
+        sourceCategory: "premium_fuel_program",
+        sourceEvidence: "Shell Select quality fuel/cafe proxy",
         pageSize: 10,
         regionCode: "IN",
         fieldMask: googleTextSearchFieldMask,
@@ -132,6 +138,9 @@ describe("filterHighwayPlaceMatches", () => {
       highwayContext: "NH-44",
       routeContext: "Krishnagiri toll plaza",
       source: "google_places_text_search",
+      cleanlinessTier: "tier_2",
+      sourceCategory: "premium_fuel_program",
+      sourceEvidence: "Shell Select quality fuel/cafe proxy",
     });
     expect(matches[0].distanceFromHighwayMeters).toBeLessThan(150);
   });
@@ -205,7 +214,17 @@ describe("seed catalog", () => {
     expect(highwaySearchCorridors.length).toBeGreaterThanOrEqual(12);
 
     expect(proxyBrands.map((brand) => brand.brandName)).toEqual(
-      expect.arrayContaining(["Shell Select", "Indian Oil Swagat", "BPCL Ghar", "Jio-bp", "Cube Stop"]),
+      expect.arrayContaining([
+        "Shell Select",
+        "Indian Oil Swagat",
+        "BPCL Ghar",
+        "Jio-bp",
+        "Cube Stop",
+        "NHAI Wayside Amenities",
+        "HPCL Focus Outlet",
+        "BPCL Pure for Sure Platinum",
+        "MP Tourism Highway Treat",
+      ]),
     );
     expect(curatedStopCandidates.map((candidate) => candidate.name)).toEqual(
       expect.arrayContaining(["Lavato", "Gargi Surya Vihar", "National Highway Dhaba", "Raha Highway Dhabas"]),

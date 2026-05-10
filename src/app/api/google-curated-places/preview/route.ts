@@ -18,6 +18,20 @@ const DEFAULT_PREVIEW_LIMIT = 40;
 const DEFAULT_MAX_PREVIEW_LIMIT = 120;
 
 export async function GET(request: Request) {
+  if (process.env.GOOGLE_DISCOVERY_PREVIEW_ENABLED !== "true") {
+    return NextResponse.json(
+      {
+        error: "Live Google Places Text Search preview is disabled.",
+        places: [],
+        totalJobs: 0,
+        searchedJobs: 0,
+        textSearchRequests: 0,
+        capped: true,
+      },
+      { status: 403 },
+    );
+  }
+
   const apiKey = process.env.GOOGLE_MAPS_SERVER_API_KEY;
   const jobs = buildHighwayPlacesSearchJobs({ proxyBrands, curatedStopCandidates, corridors: highwaySearchCorridors });
   const limit = getRequestedLimit(request, jobs.length);
@@ -62,7 +76,7 @@ export async function GET(request: Request) {
     .map((place) => toHighwayStop(place, placeById.get(place.placeId)))
     .filter((place): place is HighwayStop => Boolean(place));
 
-  return NextResponse.json({ places, totalJobs: jobs.length, searchedJobs, capped: limit < jobs.length });
+  return NextResponse.json({ places, totalJobs: jobs.length, searchedJobs, textSearchRequests: searchedJobs, capped: limit < jobs.length });
 }
 
 function getRequestedLimit(request: Request, totalJobs: number): number {

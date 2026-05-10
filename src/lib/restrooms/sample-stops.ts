@@ -12,6 +12,8 @@ export type HighwayStop = CandidateStop & {
   googlePlaceName?: string;
   openingHoursText?: string[];
   isPaidPremium?: boolean;
+  cleanlinessLabel?: string;
+  sourceLabel?: string;
 };
 
 export const sampleHighwayStops: HighwayStop[] = [
@@ -37,6 +39,8 @@ export const sampleHighwayStops: HighwayStop[] = [
     placeId: "ChIJgwabcfrNrTsRxuE8JnwhFL8",
     googleMapsUri: "https://maps.google.com/?cid=13768666777879634374",
     googlePlaceName: "LAVATO - A Premium Lounge",
+    cleanlinessLabel: "Premium restroom",
+    sourceLabel: "Premium restroom",
     openingHoursText: [
       "Monday: 8:00 AM - 10:00 PM",
       "Tuesday: Closed",

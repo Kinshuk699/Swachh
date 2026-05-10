@@ -3,14 +3,30 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { GET } from "./route";
 
 const originalServerKey = process.env.GOOGLE_MAPS_SERVER_API_KEY;
+const originalPreviewEnabled = process.env.GOOGLE_DISCOVERY_PREVIEW_ENABLED;
 
 describe("GET /api/google-curated-places/preview", () => {
   afterEach(() => {
     vi.restoreAllMocks();
     process.env.GOOGLE_MAPS_SERVER_API_KEY = originalServerKey;
+    process.env.GOOGLE_DISCOVERY_PREVIEW_ENABLED = originalPreviewEnabled;
+  });
+
+  it("keeps live Text Search preview disabled by default", async () => {
+    delete process.env.GOOGLE_DISCOVERY_PREVIEW_ENABLED;
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const response = await GET(new Request("http://localhost/api/google-curated-places/preview?limit=1"));
+    const body = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(body.textSearchRequests).toBe(0);
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 
   it("resolves a capped batch of Google Places markers for the map", async () => {
+    process.env.GOOGLE_DISCOVERY_PREVIEW_ENABLED = "true";
     process.env.GOOGLE_MAPS_SERVER_API_KEY = "server-key";
     vi.stubGlobal(
       "fetch",

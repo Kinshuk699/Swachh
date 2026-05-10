@@ -33,7 +33,7 @@ describe("MapCanvas", () => {
 
   it("renders the normal Google map when a browser key is configured", async () => {
     process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY = "browser-key";
-    stubPreviewFetch();
+    stubCuratedPlacesFetch();
 
     render(
       <MapCanvas
@@ -47,7 +47,8 @@ describe("MapCanvas", () => {
     expect(screen.getByTestId("google-map")).toBeTruthy();
     expect(screen.queryByRole("img", { name: /swachh national highway atlas/i })).toBeNull();
     expect(screen.getByTestId("google-map").getAttribute("data-has-styles")).toBe("true");
-    await waitFor(() => expect(screen.getByText(/Preview resolved/i)).toBeTruthy());
+    await waitFor(() => expect(screen.getByText(/highway stops/i)).toBeTruthy());
+    expect(fetch).toHaveBeenCalledWith("/api/google-curated-places?limit=40");
   });
 
   it("shows a Google Maps configuration message when the browser key is missing", () => {
@@ -68,7 +69,7 @@ describe("MapCanvas", () => {
 
   it("renders paid premium Google places as gold markers and opens a details window", async () => {
     process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY = "browser-key";
-    stubPreviewFetch();
+    stubCuratedPlacesFetch();
 
     render(
       <MapCanvas
@@ -81,19 +82,31 @@ describe("MapCanvas", () => {
     const marker = screen.getByTestId("map-marker");
     expect(marker.textContent).toContain("LAVATO - A Premium Lounge");
     expect(marker.getAttribute("data-icon")).toContain("yellow-dot");
+    await waitFor(() => expect(screen.getByText(/highway stops/i)).toBeTruthy());
     fireEvent.click(marker);
     expect(screen.getByTestId("info-window")).toBeTruthy();
+    expect(screen.getAllByText("Premium restroom").length).toBeGreaterThan(0);
     expect(screen.getByText("Paid premium lounge")).toBeTruthy();
     expect(screen.getByText("Monday: 8:00 AM - 10:00 PM")).toBeTruthy();
-    await waitFor(() => expect(screen.getByText(/Preview resolved/i)).toBeTruthy());
+    expect(screen.queryByText(/tier_1/i)).toBeNull();
+    await waitFor(() => expect(screen.getByText(/highway stops/i)).toBeTruthy());
   });
 });
 
-function stubPreviewFetch() {
+function stubCuratedPlacesFetch() {
   vi.stubGlobal(
     "fetch",
     vi.fn(async () =>
-      new Response(JSON.stringify({ places: [], searchedJobs: 0, totalJobs: 2_808, capped: true }), { status: 200 }),
+      new Response(
+        JSON.stringify({
+          places: [],
+          storedRowsRead: 0,
+          placeDetailsRequests: 0,
+          textSearchRequests: 0,
+          capped: true,
+        }),
+        { status: 200 },
+      ),
     ),
   );
 }

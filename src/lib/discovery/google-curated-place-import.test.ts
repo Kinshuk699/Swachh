@@ -86,6 +86,25 @@ describe("discoverGoogleCuratedPlaces", () => {
     expect(result).toMatchObject({ totalJobs: 2, searchedJobs: 1 });
     expect(searchedJobIds).toEqual(["first"]);
   });
+
+  it("aborts before Google calls when planned text searches exceed the request cap", async () => {
+    const searchedJobIds: string[] = [];
+
+    await expect(
+      discoverGoogleCuratedPlaces({
+        apiKey: "server-key",
+        corridors: [corridor],
+        maxTextSearchRequests: 1,
+        jobs: [job({ id: "first" }), job({ id: "second" })],
+        searchTextPlaces: async (googleJob) => {
+          searchedJobIds.push(googleJob.id);
+          return { places: [] };
+        },
+      }),
+    ).rejects.toThrow("Planned Google Places Text Search requests exceed cap: planned=2 cap=1");
+
+    expect(searchedJobIds).toEqual([]);
+  });
 });
 
 describe("toGoogleCuratedPlaceRows", () => {
@@ -102,6 +121,9 @@ describe("toGoogleCuratedPlaceRows", () => {
           confidence: 0.95,
           distanceFromHighwayMeters: 90,
           source: "google_places_text_search",
+          cleanlinessTier: "tier_1",
+          sourceCategory: "premium_restroom",
+          sourceEvidence: "Premium AC lavatory",
           localNotes: "Premium AC lavatory",
         },
       ],
@@ -114,13 +136,16 @@ describe("toGoogleCuratedPlaceRows", () => {
         seed_name: "Lavato",
         region: "South India",
         proxy_type: "premium_lavatory",
+        cleanliness_tier: "tier_1",
+        source_category: "premium_restroom",
+        source_evidence: "Premium AC lavatory",
         highway_name: "NH-44",
         route_context: "Krishnagiri toll plaza",
         locality_hint: null,
         restroom_confidence: 0.95,
         distance_from_highway_meters: 90,
         local_notes: "Premium AC lavatory",
-        verification_status: "matched",
+        verification_status: "likely_clean",
         matched_at: "2026-05-10T00:00:00.000Z",
         updated_at: "2026-05-10T00:00:00.000Z",
       },
