@@ -2,7 +2,7 @@ import type { GoogleTextSearchJob, GoogleTextSearchPlace } from "@/lib/discovery
 
 const GOOGLE_PLACES_TEXT_SEARCH_URL = "https://places.googleapis.com/v1/places:searchText";
 const GOOGLE_PLACES_DETAILS_URL = "https://places.googleapis.com/v1/places";
-const googlePlaceDetailsFieldMask = "id,displayName,location,businessStatus,googleMapsUri,currentOpeningHours";
+const googlePlaceDetailsFieldMask = "id,displayName,location,types,businessStatus,googleMapsUri,currentOpeningHours";
 
 type Fetcher = typeof fetch;
 
@@ -15,6 +15,7 @@ export type GooglePlaceDetails = {
   id: string;
   displayName: string;
   location?: { latitude: number; longitude: number };
+  types: string[];
   businessStatus?: string;
   googleMapsUri?: string;
   openNow?: boolean;
@@ -77,6 +78,7 @@ export async function getPlaceDetails(
     id?: string;
     displayName?: { text?: string };
     location?: { latitude: number; longitude: number };
+    types?: string[];
     businessStatus?: string;
     googleMapsUri?: string;
     currentOpeningHours?: { openNow?: boolean; weekdayDescriptions?: string[] };
@@ -86,6 +88,7 @@ export async function getPlaceDetails(
     id: body.id ?? placeId,
     displayName: body.displayName?.text ?? placeId,
     location: body.location,
+    types: body.types ?? [],
     businessStatus: body.businessStatus,
     googleMapsUri: body.googleMapsUri,
     openNow: body.currentOpeningHours?.openNow,

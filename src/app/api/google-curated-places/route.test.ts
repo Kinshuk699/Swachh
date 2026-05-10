@@ -61,6 +61,7 @@ describe("GET /api/google-curated-places", () => {
             id: "google-place-id",
             displayName: { text: "LAVATO - A Premium Lounge" },
             location: { latitude: 12.5732978, longitude: 78.1692122 },
+            types: ["public_bathroom"],
             googleMapsUri: "https://maps.google.com/?cid=123",
             currentOpeningHours: {
               openNow: true,
@@ -148,6 +149,7 @@ describe("GET /api/google-curated-places", () => {
             id: url.includes("bad-cube-place-id") ? "bad-cube-place-id" : "lavato-place-id",
             displayName: { text: url.includes("bad-cube-place-id") ? "M Cube Practical Classes" : "LAVATO - A Premium Lounge" },
             location: { latitude: 12.5732978, longitude: 78.1692122 },
+            types: url.includes("bad-cube-place-id") ? ["school"] : ["public_bathroom"],
           }),
           { status: 200 },
         );
@@ -162,5 +164,99 @@ describe("GET /api/google-curated-places", () => {
     expect(body.placeDetailsRequests).toBe(2);
     expect(body.places).toHaveLength(1);
     expect(body.places[0].placeId).toBe("lavato-place-id");
+  });
+
+  it("backfills from later stored rows when details validation rejects early candidates", async () => {
+    process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
+    process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role-key";
+    process.env.GOOGLE_MAPS_SERVER_API_KEY = "server-key";
+    limitSpy.mockResolvedValue({
+      data: [
+        {
+          google_place_id: "bad-store-place-id",
+          seed_name: "Shell Select",
+          region: "West India",
+          proxy_type: "fuel_cafe",
+          cleanliness_tier: "tier_2",
+          source_category: "premium_fuel_program",
+          source_evidence: "Fuel cafe proxy",
+          highway_name: "NH-47",
+          route_context: "Rajkot-Ahmedabad",
+          restroom_confidence: 0.78,
+          distance_from_highway_meters: 140,
+          local_notes: "Fuel cafe proxy",
+          verification_status: "likely_clean",
+        },
+        {
+          google_place_id: "good-lavato-place-id",
+          seed_name: "Lavato",
+          region: "South India",
+          proxy_type: "premium_lavatory",
+          cleanliness_tier: "tier_1",
+          source_category: "premium_restroom",
+          source_evidence: "Premium AC lavatory",
+          highway_name: "NH-44",
+          route_context: "Krishnagiri toll plaza",
+          restroom_confidence: 0.95,
+          distance_from_highway_meters: 90,
+          local_notes: "Premium AC lavatory",
+          verification_status: "likely_clean",
+        },
+        {
+          google_place_id: "good-jio-place-id",
+          seed_name: "Jio-bp",
+          region: "West India",
+          proxy_type: "fuel_cafe",
+          cleanliness_tier: "tier_2",
+          source_category: "premium_fuel_program",
+          source_evidence: "Modern mobility station",
+          highway_name: "NH-47",
+          route_context: "Rajkot-Ahmedabad",
+          restroom_confidence: 0.82,
+          distance_from_highway_meters: 110,
+          local_notes: "Modern mobility station",
+          verification_status: "likely_clean",
+        },
+      ],
+      error: null,
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL | Request) => {
+        const url = String(input);
+        const fixtures: Record<string, unknown> = {
+          "bad-store-place-id": {
+            id: "bad-store-place-id",
+            displayName: { text: "Shell Select Fashion Store" },
+            location: { latitude: 22.99, longitude: 72.38 },
+            types: ["store"],
+          },
+          "good-lavato-place-id": {
+            id: "good-lavato-place-id",
+            displayName: { text: "LAVATO - A Premium Lounge" },
+            location: { latitude: 12.5732978, longitude: 78.1692122 },
+            types: ["public_bathroom"],
+          },
+          "good-jio-place-id": {
+            id: "good-jio-place-id",
+            displayName: { text: "JIO BP FUEL STATION" },
+            location: { latitude: 22.7, longitude: 71.6 },
+            types: ["gas_station"],
+          },
+        };
+        const placeId = Object.keys(fixtures).find((id) => url.includes(id));
+
+        return new Response(JSON.stringify(fixtures[placeId ?? "bad-store-place-id"]), { status: 200 });
+      }),
+    );
+    const { GET } = await import("./route");
+
+    const response = await GET(new Request("http://localhost/api/google-curated-places?limit=2"));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.placeDetailsRequests).toBe(3);
+    expect(body.places).toHaveLength(2);
+    expect(body.places.map((place: { placeId: string }) => place.placeId)).toEqual(["good-lavato-place-id", "good-jio-place-id"]);
   });
 });

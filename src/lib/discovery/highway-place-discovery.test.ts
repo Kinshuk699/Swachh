@@ -5,6 +5,7 @@ import {
   dedupeDiscoveredHighwayPlaces,
   filterHighwayPlaceMatches,
   googleTextSearchFieldMask,
+  isRelevantGooglePlaceCandidate,
   toStoredCuratedPlaceReference,
 } from "./highway-place-discovery";
 import { curatedStopCandidates, highwaySearchCorridors, proxyBrands } from "./seed-catalog";
@@ -197,6 +198,95 @@ describe("filterHighwayPlaceMatches", () => {
       cleanlinessTier: "tier_1",
       sourceCategory: "official_wayside_amenity",
     });
+  });
+});
+
+describe("isRelevantGooglePlaceCandidate", () => {
+  it("does not let broad brand names inherit quality-program labels", () => {
+    expect(
+      isRelevantGooglePlaceCandidate({
+        seedName: "Indian Oil Swagat",
+        proxyType: "fuel_cafe",
+        placeName: "IndianOil",
+        types: ["gas_station"],
+      }),
+    ).toBe(false);
+
+    expect(
+      isRelevantGooglePlaceCandidate({
+        seedName: "Indian Oil Swagat",
+        proxyType: "fuel_cafe",
+        placeName: "IndianOil Swagat Retail Outlet",
+        types: ["gas_station"],
+      }),
+    ).toBe(true);
+  });
+
+  it("rejects matching names with unrelated Google place types", () => {
+    expect(
+      isRelevantGooglePlaceCandidate({
+        seedName: "Shell Select",
+        proxyType: "fuel_cafe",
+        placeName: "Shell Select Digital Marketing",
+        types: ["marketing_agency"],
+      }),
+    ).toBe(false);
+
+    expect(
+      isRelevantGooglePlaceCandidate({
+        seedName: "Shell Select",
+        proxyType: "fuel_cafe",
+        placeName: "Shell Select",
+        types: ["gas_station", "convenience_store"],
+      }),
+    ).toBe(true);
+
+    expect(
+      isRelevantGooglePlaceCandidate({
+        seedName: "Shell Select",
+        proxyType: "fuel_cafe",
+        placeName: "Shell Select Fashion Store",
+        types: ["store"],
+      }),
+    ).toBe(false);
+  });
+
+  it("keeps short distinctive fuel-brand tokens in the match", () => {
+    expect(
+      isRelevantGooglePlaceCandidate({
+        seedName: "Jio-bp",
+        proxyType: "fuel_cafe",
+        placeName: "My Jio Store",
+        types: ["store"],
+      }),
+    ).toBe(false);
+
+    expect(
+      isRelevantGooglePlaceCandidate({
+        seedName: "Jio-bp",
+        proxyType: "fuel_cafe",
+        placeName: "JIO BP FUEL STATION",
+        types: ["gas_station"],
+      }),
+    ).toBe(true);
+
+    expect(
+      isRelevantGooglePlaceCandidate({
+        seedName: "Club HP",
+        proxyType: "fuel_station",
+        placeName: "Club Health Plus Store",
+        types: ["gas_station"],
+      }),
+    ).toBe(false);
+
+    expect(
+      isRelevantGooglePlaceCandidate({
+        seedName: "Club HP",
+        proxyType: "fuel_station",
+        placeName: "Club HP Fuel Station",
+        types: ["gas_station"],
+      }),
+    ).toBe(true);
   });
 });
 

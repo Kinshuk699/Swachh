@@ -116,6 +116,17 @@ export type DiscoveredHighwayPlace = {
 };
 
 const weakPlaceNameTokens = new Set(["and", "the", "fuel", "cafe", "restaurant", "hotel", "highway", "official", "service"]);
+const significantShortPlaceNameTokens = new Set(["bp", "hp"]);
+const relevantPlaceTypesByProxyType: Record<ProxyType, Set<string>> = {
+  premium_lavatory: new Set(["public_bathroom", "public_bath", "rest_stop", "gas_station", "restaurant", "cafe"]),
+  wayside_amenity: new Set(["rest_stop", "gas_station", "restaurant", "cafe", "convenience_store", "public_bathroom", "public_bath", "lodging"]),
+  fuel_cafe: new Set(["gas_station", "electric_vehicle_charging_station", "convenience_store", "cafe", "restaurant"]),
+  fuel_station: new Set(["gas_station", "electric_vehicle_charging_station", "convenience_store"]),
+  food_plaza: new Set(["restaurant", "cafe", "fast_food_restaurant", "food", "meal_takeaway", "bakery"]),
+  restaurant_proxy: new Set(["restaurant", "cafe", "fast_food_restaurant", "food", "meal_takeaway", "bakery"]),
+  qsr: new Set(["restaurant", "cafe", "fast_food_restaurant", "food", "meal_takeaway", "bakery"]),
+  dhaba_proxy: new Set(["restaurant", "cafe", "food", "meal_takeaway"]),
+};
 
 export function buildHighwayPlacesSearchJobs(input: {
   proxyBrands: HygieneProxyBrand[];
@@ -194,7 +205,14 @@ export function filterHighwayPlaceMatches(input: {
         return [];
       }
 
-      if (!isRelevantGooglePlaceNameMatch(input.job.seedName, place.displayName?.text)) {
+      if (
+        !isRelevantGooglePlaceCandidate({
+          seedName: input.job.seedName,
+          proxyType: input.job.proxyType,
+          placeName: place.displayName?.text,
+          types: place.types,
+        })
+      ) {
         return [];
       }
 
@@ -349,21 +367,49 @@ export function isRelevantGooglePlaceNameMatch(seedName: string, placeName: stri
     return false;
   }
 
-  if (normalizedPlaceName.includes(normalizedSeedName) || normalizedSeedName.includes(normalizedPlaceName)) {
+  if (normalizedPlaceName.includes(normalizedSeedName)) {
     return true;
   }
 
-  const tokens = seedName
-    .toLowerCase()
-    .replace(/&/g, " and ")
-    .split(/[^a-z0-9]+/)
-    .filter((token) => token.length >= 3 && !weakPlaceNameTokens.has(token));
+  const tokens = tokenizeForPlaceMatch(seedName)
+    .filter((token) => (token.length >= 3 || significantShortPlaceNameTokens.has(token)) && !weakPlaceNameTokens.has(token));
+  const placeTokens = new Set(tokenizeForPlaceMatch(placeName));
 
-  return tokens.length > 0 && tokens.every((token) => normalizedPlaceName.includes(token));
+  return (
+    tokens.length > 0 &&
+    tokens.every((token) => (significantShortPlaceNameTokens.has(token) ? placeTokens.has(token) : normalizedPlaceName.includes(token)))
+  );
+}
+
+export function isRelevantGooglePlaceCandidate(input: {
+  seedName: string;
+  proxyType: ProxyType;
+  placeName: string | undefined;
+  types: string[] | undefined;
+}): boolean {
+  return isRelevantGooglePlaceNameMatch(input.seedName, input.placeName) && hasRelevantGooglePlaceType(input.proxyType, input.types);
+}
+
+function hasRelevantGooglePlaceType(proxyType: ProxyType, types: string[] | undefined): boolean {
+  if (!types?.length) {
+    return false;
+  }
+
+  const relevantTypes = relevantPlaceTypesByProxyType[proxyType];
+
+  return types.some((type) => relevantTypes.has(type));
 }
 
 function normalizeForPlaceMatch(input: string): string {
   return input.toLowerCase().replace(/&/g, "and").replace(/[^a-z0-9]+/g, "");
+}
+
+function tokenizeForPlaceMatch(input: string): string[] {
+  return input
+    .toLowerCase()
+    .replace(/&/g, " and ")
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean);
 }
 
 function includesAny(input: string, needles: string[]): boolean {

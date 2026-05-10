@@ -50,11 +50,13 @@ describe("discoverGoogleCuratedPlaces", () => {
             id: "same-google-place-id",
             location: { latitude: 12.0005, longitude: 78.01 },
             displayName: { text: "LAVATO - A Premium Lounge" },
+            types: ["public_bathroom", "point_of_interest", "establishment"],
           },
           {
             id: "too-far-away",
             location: { latitude: 12.4, longitude: 78.5 },
             displayName: { text: "City-only place" },
+            types: ["public_bathroom", "point_of_interest", "establishment"],
           },
         ],
       }),

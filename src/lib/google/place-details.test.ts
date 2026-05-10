@@ -10,6 +10,7 @@ describe("getPlaceDetails", () => {
           id: "ChIJgwabcfrNrTsRxuE8JnwhFL8",
           displayName: { text: "LAVATO - A Premium Lounge" },
           location: { latitude: 12.5732978, longitude: 78.1692122 },
+          types: ["public_bathroom"],
           businessStatus: "OPERATIONAL",
           googleMapsUri: "https://maps.google.com/?cid=13768666777879634374",
           currentOpeningHours: {
@@ -28,13 +29,14 @@ describe("getPlaceDetails", () => {
       expect.objectContaining({
         headers: expect.objectContaining({
           "X-Goog-Api-Key": "server-key",
-          "X-Goog-FieldMask": "id,displayName,location,businessStatus,googleMapsUri,currentOpeningHours",
+          "X-Goog-FieldMask": "id,displayName,location,types,businessStatus,googleMapsUri,currentOpeningHours",
         }),
       }),
     );
     expect(details).toMatchObject({
       id: "ChIJgwabcfrNrTsRxuE8JnwhFL8",
       displayName: "LAVATO - A Premium Lounge",
+      types: ["public_bathroom"],
       openNow: true,
       weekdayDescriptions: ["Monday: 8:00 AM - 10:00 PM"],
     });

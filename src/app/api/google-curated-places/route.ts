@@ -1,7 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 
-import { isRelevantGooglePlaceNameMatch, type CleanlinessTier, type ProxyType, type SourceCategory } from "@/lib/discovery/highway-place-discovery";
+import { isRelevantGooglePlaceCandidate, type CleanlinessTier, type ProxyType, type SourceCategory } from "@/lib/discovery/highway-place-discovery";
 import { getPlaceDetails, type GooglePlaceDetails } from "@/lib/google/places";
 import { cleanToiletDisplayLabel } from "@/lib/restrooms/clean-toilet-labels";
 import type { HighwayStop } from "@/lib/restrooms/sample-stops";
@@ -91,29 +91,39 @@ export async function GET(request: Request) {
   }
 
   const rows = (data ?? []) as unknown as GoogleCuratedPlaceRow[];
-  const candidateRows = diversifyStoredRows(rows).slice(0, limit);
-  const placeResults = await Promise.all(
-    candidateRows.map(async (row) => {
-      try {
-        const details = await getPlaceDetails(row.google_place_id, { apiKey });
-        if (!isRelevantGooglePlaceMatch(row, details)) {
-          return null;
-        }
+  const diversifiedRows = diversifyStoredRows(rows);
+  const maxPlaceDetailsRequests = Math.min(diversifiedRows.length, limit * 2);
+  const places: HighwayStop[] = [];
+  let placeDetailsRequests = 0;
 
-        return toHighwayStop(row, details);
-      } catch {
-        return null;
+  for (const row of diversifiedRows) {
+    if (places.length >= limit || placeDetailsRequests >= maxPlaceDetailsRequests) {
+      break;
+    }
+
+    placeDetailsRequests += 1;
+
+    try {
+      const details = await getPlaceDetails(row.google_place_id, { apiKey });
+      if (!isRelevantGooglePlaceMatch(row, details)) {
+        continue;
       }
-    }),
-  );
-  const places = placeResults.filter((place): place is HighwayStop => Boolean(place));
+
+      const stop = toHighwayStop(row, details);
+      if (stop) {
+        places.push(stop);
+      }
+    } catch {
+      continue;
+    }
+  }
 
   return NextResponse.json({
     places,
     storedRowsRead: rows.length,
-    placeDetailsRequests: candidateRows.length,
+    placeDetailsRequests,
     textSearchRequests: 0,
-    capped: rows.length === storedRowLimit || candidateRows.length === limit,
+    capped: rows.length === storedRowLimit || (places.length < limit && placeDetailsRequests === maxPlaceDetailsRequests),
   });
 }
 
@@ -210,5 +220,10 @@ function diversifyStoredRows(rows: GoogleCuratedPlaceRow[]): GoogleCuratedPlaceR
 }
 
 function isRelevantGooglePlaceMatch(row: GoogleCuratedPlaceRow, details: GooglePlaceDetails): boolean {
-  return isRelevantGooglePlaceNameMatch(row.seed_name, details.displayName);
+  return isRelevantGooglePlaceCandidate({
+    seedName: row.seed_name,
+    proxyType: row.proxy_type,
+    placeName: details.displayName,
+    types: details.types,
+  });
 }
