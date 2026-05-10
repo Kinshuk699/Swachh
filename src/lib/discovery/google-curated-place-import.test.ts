@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import type { GoogleTextSearchJob, HighwaySearchCorridor } from "./highway-place-discovery";
-import { discoverGoogleCuratedPlaces, toGoogleCuratedPlaceRows } from "./google-curated-place-import";
+import {
+  discoverGoogleCuratedPlaces,
+  filterAcceptedGoogleCuratedPlaceRowsForUpsert,
+  filterGoogleCuratedPlaceJobs,
+  toGoogleCuratedPlaceRows,
+  toRejectedGoogleCuratedPlaceRows,
+} from "./google-curated-place-import";
 
 const corridor: HighwaySearchCorridor = {
   id: "nh44-krishnagiri",
@@ -107,6 +113,58 @@ describe("discoverGoogleCuratedPlaces", () => {
 
     expect(searchedJobIds).toEqual([]);
   });
+
+  it("keeps highway-adjacent rejected Google matches for manual review", async () => {
+    const result = await discoverGoogleCuratedPlaces({
+      apiKey: "server-key",
+      corridors: [corridor],
+      jobs: [job({ id: "cube", seedName: "Cube Stop", confidence: 0.9, proxyType: "wayside_amenity" })],
+      searchTextPlaces: async () => ({
+        places: [
+          {
+            id: "good-cube-place-id",
+            location: { latitude: 12.0005, longitude: 78.01 },
+            displayName: { text: "Cube Stop Washroom" },
+            types: ["rest_stop", "point_of_interest", "establishment"],
+          },
+          {
+            id: "bad-cube-place-id",
+            location: { latitude: 12.0007, longitude: 78.012 },
+            displayName: { text: "Icecube Digital" },
+            types: ["service", "point_of_interest", "establishment"],
+          },
+        ],
+      }),
+    });
+
+    expect(result.places.map((place) => place.placeId)).toEqual(["good-cube-place-id"]);
+    expect(result.rejectedPlaces).toHaveLength(1);
+    expect(result.rejectedPlaces[0]).toMatchObject({
+      placeId: "bad-cube-place-id",
+      seedName: "Cube Stop",
+      cleanlinessTier: "tier_1",
+      sourceCategory: "official_wayside_amenity",
+      rejectionReason: "seed_name_mismatch",
+    });
+  });
+});
+
+describe("filterGoogleCuratedPlaceJobs", () => {
+  it("filters import jobs by tier and seed name before Google calls", () => {
+    const jobs = [
+      job({ id: "tier-1-lavato", seedName: "Lavato", cleanlinessTier: "tier_1" }),
+      job({ id: "tier-1-highway-nest", seedName: "Highway Nest Mini", cleanlinessTier: "tier_1" }),
+      job({ id: "tier-2-shell", seedName: "Shell Select", cleanlinessTier: "tier_2" }),
+    ];
+
+    expect(filterGoogleCuratedPlaceJobs(jobs, { cleanlinessTiers: ["tier_1"] }).map((googleJob) => googleJob.id)).toEqual([
+      "tier-1-lavato",
+      "tier-1-highway-nest",
+    ]);
+    expect(filterGoogleCuratedPlaceJobs(jobs, { seedNames: ["highway nest mini"] }).map((googleJob) => googleJob.id)).toEqual([
+      "tier-1-highway-nest",
+    ]);
+  });
 });
 
 describe("toGoogleCuratedPlaceRows", () => {
@@ -154,5 +212,118 @@ describe("toGoogleCuratedPlaceRows", () => {
     ]);
     expect(Object.keys(rows[0])).not.toContain("display_name");
     expect(Object.keys(rows[0])).not.toContain("opening_hours");
+  });
+
+  it("marks rejected Google matches without storing resolved Google fields", () => {
+    const rows = toRejectedGoogleCuratedPlaceRows(
+      [
+        {
+          placeId: "bad-cube-place-id",
+          seedName: "Cube Stop",
+          highwayContext: "NH-44",
+          routeContext: "Krishnagiri toll plaza",
+          region: "South India",
+          proxyType: "wayside_amenity",
+          confidence: 0.9,
+          distanceFromHighwayMeters: 120,
+          source: "google_places_text_search",
+          cleanlinessTier: "tier_1",
+          sourceCategory: "official_wayside_amenity",
+          sourceEvidence: "Cube Highways amenity with dedicated Wash Stop",
+          localNotes: "Cube Highways amenity with dedicated Wash Stop",
+          rejectionReason: "seed_name_mismatch",
+        },
+      ],
+      "2026-05-11T00:00:00.000Z",
+    );
+
+    expect(rows).toEqual([
+      expect.objectContaining({
+        google_place_id: "bad-cube-place-id",
+        seed_name: "Cube Stop",
+        cleanliness_tier: "tier_1",
+        source_category: "official_wayside_amenity",
+        verification_status: "rejected",
+        local_notes: "Rejected false-positive Google match: seed did not match resolved place name | Cube Highways amenity with dedicated Wash Stop",
+      }),
+    ]);
+    expect(Object.keys(rows[0])).not.toContain("display_name");
+    expect(Object.keys(rows[0])).not.toContain("types");
+  });
+});
+
+describe("filterAcceptedGoogleCuratedPlaceRowsForUpsert", () => {
+  it("keeps lower-tier accepted rows from overwriting stronger existing rows", () => {
+    const timestamp = "2026-05-11T00:00:00.000Z";
+    const tierOneRow = toGoogleCuratedPlaceRows(
+      [
+        {
+          placeId: "same-place-id",
+          seedName: "Highway Nest",
+          highwayContext: "NH-44",
+          routeContext: "Toll plaza",
+          region: "South India",
+          proxyType: "wayside_amenity",
+          confidence: 0.9,
+          distanceFromHighwayMeters: 120,
+          source: "google_places_text_search",
+          cleanlinessTier: "tier_1",
+          sourceCategory: "official_wayside_amenity",
+          sourceEvidence: "Highway Nest",
+        },
+      ],
+      timestamp,
+    )[0];
+    const tierTwoRow = toGoogleCuratedPlaceRows(
+      [
+        {
+          placeId: "same-place-id",
+          seedName: "Nayara Energy",
+          highwayContext: "NH-44",
+          routeContext: "Toll plaza",
+          region: "South India",
+          proxyType: "fuel_station",
+          confidence: 0.78,
+          distanceFromHighwayMeters: 110,
+          source: "google_places_text_search",
+          cleanlinessTier: "tier_2",
+          sourceCategory: "premium_fuel_program",
+          sourceEvidence: "Nayara Energy",
+        },
+      ],
+      timestamp,
+    )[0];
+
+    expect(filterAcceptedGoogleCuratedPlaceRowsForUpsert([tierTwoRow], [tierOneRow])).toEqual([]);
+    expect(filterAcceptedGoogleCuratedPlaceRowsForUpsert([tierOneRow], [tierTwoRow])).toEqual([tierOneRow]);
+  });
+
+  it("preserves manually verified rows from automated import churn", () => {
+    const timestamp = "2026-05-11T00:00:00.000Z";
+    const incomingRow = toGoogleCuratedPlaceRows(
+      [
+        {
+          placeId: "manual-place-id",
+          seedName: "Nayara Energy",
+          highwayContext: "NH-44",
+          routeContext: "Toll plaza",
+          region: "South India",
+          proxyType: "fuel_station",
+          confidence: 0.78,
+          distanceFromHighwayMeters: 110,
+          source: "google_places_text_search",
+          cleanlinessTier: "tier_2",
+          sourceCategory: "premium_fuel_program",
+          sourceEvidence: "Nayara Energy",
+        },
+      ],
+      timestamp,
+    )[0];
+
+    expect(
+      filterAcceptedGoogleCuratedPlaceRowsForUpsert([incomingRow], [
+        { ...incomingRow, verification_status: "approved" },
+      ]),
+    ).toEqual([]);
   });
 });

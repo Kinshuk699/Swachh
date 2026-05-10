@@ -40,6 +40,7 @@ export type HygieneProxyBrand = {
   proxyType: ProxyType;
   defaultConfidence: number;
   notes: string;
+  corridorIds?: string[];
 };
 
 export type CuratedStopCandidate = {
@@ -115,8 +116,14 @@ export type DiscoveredHighwayPlace = {
   localNotes?: string;
 };
 
+export type RejectedDiscoveredHighwayPlace = DiscoveredHighwayPlace & {
+  rejectionReason: "seed_name_mismatch";
+};
+
 const weakPlaceNameTokens = new Set(["and", "the", "fuel", "cafe", "restaurant", "hotel", "highway", "official", "service"]);
 const significantShortPlaceNameTokens = new Set(["bp", "hp"]);
+const fuelStationSignalTokens = new Set(["energy", "fuel", "fuels", "outlet", "petrol", "petroleum", "pump", "station", "mobility"]);
+const fuelStationGoogleTypes = new Set(["gas_station"]);
 const broadRecallSeedKeys = new Set(["lavato", "pathrecharge"]);
 const brandSeedAliases = new Map<string, string[]>([
   ["bpclghar", ["bpcl", "bharatpetrol", "bharatpetroleum"]],
@@ -132,7 +139,7 @@ export function buildHighwayPlacesSearchJobs(input: {
   corridors: HighwaySearchCorridor[];
 }): GoogleTextSearchJob[] {
   const brandJobs: GoogleTextSearchJob[] = input.proxyBrands.flatMap((brand) =>
-    input.corridors.flatMap((corridor) =>
+    input.corridors.filter((corridor) => !brand.corridorIds?.length || brand.corridorIds.includes(corridor.id)).flatMap((corridor) =>
       corridor.anchors.map((anchor, anchorIndex) => ({
         ...classifyCleanToiletCandidate({ seedName: brand.brandName, proxyType: brand.proxyType, notes: brand.notes }),
         id: `proxy-brand:${slugify(brand.brandName)}:${corridor.id}:${anchorIndex}`,
@@ -191,52 +198,67 @@ export function filterHighwayPlaceMatches(input: {
   places: GoogleTextSearchPlace[];
   maxDiversionMeters: number;
 }): DiscoveredHighwayPlace[] {
-  return input.places
-    .flatMap((place): DiscoveredHighwayPlace[] => {
-      if (!place.id || !place.location) {
-        return [];
-      }
-
-      const distanceFromHighwayMeters = Math.round(distanceToPolylineMeters(place.location, input.corridor.polyline));
-
-      if (distanceFromHighwayMeters > input.maxDiversionMeters) {
-        return [];
-      }
-
-      if (
-        !isRelevantGooglePlaceCandidate({
-          seedName: input.job.seedName,
-          proxyType: input.job.proxyType,
-          placeName: place.displayName?.text,
-          types: place.types,
-        })
-      ) {
-        return [];
-      }
-
-      const classification = getJobCleanToiletClassification(input.job);
-
-      return [
-        {
-          placeId: place.id,
-          seedName: input.job.seedName,
-          highwayContext: input.job.expectedHighwayContext,
-          routeContext: input.job.expectedRouteContext,
-          region: input.job.region,
-          proxyType: input.job.proxyType,
-          confidence: input.job.confidence,
-          distanceFromHighwayMeters,
-          source: "google_places_text_search",
-          ...classification,
-          localNotes: input.job.notes,
-        },
-      ];
-    })
-    .sort((left, right) => left.distanceFromHighwayMeters - right.distanceFromHighwayMeters);
+  return partitionHighwayPlaceMatches(input).accepted;
 }
 
-export function dedupeDiscoveredHighwayPlaces(places: DiscoveredHighwayPlace[]): DiscoveredHighwayPlace[] {
-  const bestByPlaceId = new Map<string, DiscoveredHighwayPlace>();
+export function partitionHighwayPlaceMatches(input: {
+  job: GoogleTextSearchJob;
+  corridor: HighwaySearchCorridor;
+  places: GoogleTextSearchPlace[];
+  maxDiversionMeters: number;
+}): { accepted: DiscoveredHighwayPlace[]; rejected: RejectedDiscoveredHighwayPlace[] } {
+  const accepted: DiscoveredHighwayPlace[] = [];
+  const rejected: RejectedDiscoveredHighwayPlace[] = [];
+
+  for (const place of input.places) {
+    if (!place.id || !place.location) {
+      continue;
+    }
+
+    const distanceFromHighwayMeters = Math.round(distanceToPolylineMeters(place.location, input.corridor.polyline));
+
+    if (distanceFromHighwayMeters > input.maxDiversionMeters) {
+      continue;
+    }
+
+    const classification = getJobCleanToiletClassification(input.job);
+    const basePlace: DiscoveredHighwayPlace = {
+      placeId: place.id,
+      seedName: input.job.seedName,
+      highwayContext: input.job.expectedHighwayContext,
+      routeContext: input.job.expectedRouteContext,
+      region: input.job.region,
+      proxyType: input.job.proxyType,
+      confidence: input.job.confidence,
+      distanceFromHighwayMeters,
+      source: "google_places_text_search",
+      ...classification,
+      localNotes: input.job.notes,
+    };
+
+    if (
+      !isRelevantGooglePlaceCandidate({
+        seedName: input.job.seedName,
+        proxyType: input.job.proxyType,
+        placeName: place.displayName?.text,
+        types: place.types,
+      })
+    ) {
+      rejected.push({ ...basePlace, rejectionReason: "seed_name_mismatch" });
+      continue;
+    }
+
+    accepted.push(basePlace);
+  }
+
+  return {
+    accepted: accepted.sort((left, right) => left.distanceFromHighwayMeters - right.distanceFromHighwayMeters),
+    rejected: rejected.sort((left, right) => left.distanceFromHighwayMeters - right.distanceFromHighwayMeters),
+  };
+}
+
+export function dedupeDiscoveredHighwayPlaces<T extends DiscoveredHighwayPlace>(places: T[]): T[] {
+  const bestByPlaceId = new Map<string, T>();
 
   for (const place of places) {
     const existing = bestByPlaceId.get(place.placeId);
@@ -279,9 +301,15 @@ export function classifyCleanToiletCandidate(input: {
     includesAny(seedName, [
       "nhai wayside",
       "nhlml wayside",
+      "highway nest",
+      "highway village",
       "cube stop",
       "path recharge",
+      "expressway rest area",
+      "expressway service area",
       "official expressway service",
+      "delhi mumbai expressway",
+      "agra lucknow expressway",
       "samruddhi",
       "purvanchal expressway",
       "bundelkhand expressway",
@@ -305,6 +333,11 @@ export function classifyCleanToiletCandidate(input: {
       "shell select",
       "shell cafe",
       "wild bean cafe",
+      "reliance",
+      "reliance petroleum",
+      "reliance bp mobility",
+      "nayara",
+      "nayara energy",
     ])
   ) {
     return { cleanlinessTier: "tier_2", sourceCategory: "premium_fuel_program", sourceEvidence: evidence };
@@ -374,6 +407,22 @@ export function isRelevantGooglePlaceNameMatch(seedName: string, placeName: stri
     return placeTokens[0] === "shell";
   }
 
+  if (normalizedSeedName.includes("highwaynest")) {
+    return placeTokens.includes("highway") && placeTokens.includes("nest") && (!normalizedSeedName.includes("mini") || placeTokens.includes("mini"));
+  }
+
+  if (normalizedSeedName.includes("highwayvillage")) {
+    return placeTokens.includes("highway") && placeTokens.includes("village");
+  }
+
+  if (isRelianceFuelSeed(normalizedSeedName)) {
+    return placeTokens.includes("reliance") && hasFuelStationSignal(placeTokens);
+  }
+
+  if (isNayaraFuelSeed(normalizedSeedName)) {
+    return placeTokens.includes("nayara") && hasFuelStationSignal(placeTokens);
+  }
+
   if (broadRecallSeedKeys.has(normalizedSeedName)) {
     return true;
   }
@@ -403,7 +452,15 @@ export function isRelevantGooglePlaceCandidate(input: {
   placeName: string | undefined;
   types: string[] | undefined;
 }): boolean {
-  return isRelevantGooglePlaceNameMatch(input.seedName, input.placeName);
+  if (!isRelevantGooglePlaceNameMatch(input.seedName, input.placeName)) {
+    return false;
+  }
+
+  if (isStrictFuelOperatorSeed(input.seedName)) {
+    return hasFuelStationGoogleType(input.types);
+  }
+
+  return true;
 }
 
 function normalizeForPlaceMatch(input: string): string {
@@ -420,6 +477,28 @@ function tokenizeForPlaceMatch(input: string): string[] {
 
 function includesAny(input: string, needles: string[]): boolean {
   return needles.some((needle) => input.includes(needle));
+}
+
+function hasFuelStationSignal(tokens: string[]): boolean {
+  return tokens.some((token) => fuelStationSignalTokens.has(token));
+}
+
+function hasFuelStationGoogleType(types: string[] | undefined): boolean {
+  return Boolean(types?.some((type) => fuelStationGoogleTypes.has(type)));
+}
+
+function isStrictFuelOperatorSeed(seedName: string): boolean {
+  const normalizedSeedName = normalizeForPlaceMatch(seedName);
+
+  return isRelianceFuelSeed(normalizedSeedName) || isNayaraFuelSeed(normalizedSeedName);
+}
+
+function isRelianceFuelSeed(normalizedSeedName: string): boolean {
+  return normalizedSeedName === "reliance" || normalizedSeedName.includes("reliancepetroleum") || normalizedSeedName.includes("reliancebpmobility");
+}
+
+function isNayaraFuelSeed(normalizedSeedName: string): boolean {
+  return normalizedSeedName === "nayara" || normalizedSeedName.includes("nayaraenergy");
 }
 
 function compactJoin(parts: Array<string | undefined>, separator = " "): string {

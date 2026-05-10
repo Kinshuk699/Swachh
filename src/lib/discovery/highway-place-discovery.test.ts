@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildHighwayPlacesSearchJobs,
+  classifyCleanToiletCandidate,
   dedupeDiscoveredHighwayPlaces,
   filterHighwayPlaceMatches,
   googleTextSearchFieldMask,
@@ -54,6 +55,52 @@ describe("buildHighwayPlacesSearchJobs", () => {
         },
       },
     });
+  });
+
+  it("can scope proxy-brand searches to specific corridors", () => {
+    const jobs = buildHighwayPlacesSearchJobs({
+      proxyBrands: [
+        {
+          brandName: "Delhi Mumbai Expressway wayside amenity",
+          region: "North & West India",
+          proxyType: "wayside_amenity",
+          defaultConfidence: 0.9,
+          notes: "Official Delhi-Mumbai Expressway wayside amenity search target",
+          corridorIds: ["delhi-mumbai-expressway"],
+        },
+      ],
+      curatedStopCandidates: [],
+      corridors: [
+        {
+          id: "delhi-mumbai-expressway",
+          highwayName: "Delhi-Mumbai Expressway",
+          routeContext: "Delhi-Mumbai",
+          region: "North & West India",
+          anchors: [
+            { latitude: 28.2, longitude: 76.85, radiusMeters: 30_000 },
+            { latitude: 26.91, longitude: 76.34, radiusMeters: 30_000 },
+          ],
+          polyline: [
+            { latitude: 28.2, longitude: 76.85 },
+            { latitude: 26.91, longitude: 76.34 },
+          ],
+        },
+        {
+          id: "nh44-krishnagiri",
+          highwayName: "NH-44",
+          routeContext: "Krishnagiri toll plaza",
+          region: "South India",
+          anchors: [{ latitude: 12, longitude: 78, radiusMeters: 30_000 }],
+          polyline: [
+            { latitude: 12, longitude: 78 },
+            { latitude: 12, longitude: 78.1 },
+          ],
+        },
+      ],
+    });
+
+    expect(jobs).toHaveLength(2);
+    expect(jobs.every((job) => job.expectedRouteContext === "Delhi-Mumbai")).toBe(true);
   });
 
   it("turns curated stop hints into precise Google Places Text Search jobs", () => {
@@ -470,6 +517,53 @@ describe("isRelevantGooglePlaceCandidate", () => {
       }),
     ).toBe(true);
   });
+
+  it("keeps broad Reliance and Nayara fuel seeds from matching non-fuel businesses", () => {
+    expect(
+      isRelevantGooglePlaceCandidate({
+        seedName: "Reliance",
+        proxyType: "fuel_station",
+        placeName: "Reliance Petroleum",
+        types: ["gas_station"],
+      }),
+    ).toBe(true);
+
+    expect(
+      isRelevantGooglePlaceCandidate({
+        seedName: "Reliance",
+        proxyType: "fuel_station",
+        placeName: "Reliance Digital",
+        types: ["electronics_store"],
+      }),
+    ).toBe(false);
+
+    expect(
+      isRelevantGooglePlaceCandidate({
+        seedName: "Reliance",
+        proxyType: "fuel_station",
+        placeName: "Reliance Bio Energy Complex",
+        types: ["manufacturer", "point_of_interest", "establishment"],
+      }),
+    ).toBe(false);
+
+    expect(
+      isRelevantGooglePlaceCandidate({
+        seedName: "Nayara Energy",
+        proxyType: "fuel_station",
+        placeName: "Nayara Petrol Pump",
+        types: ["gas_station"],
+      }),
+    ).toBe(true);
+
+    expect(
+      isRelevantGooglePlaceCandidate({
+        seedName: "Nayara Energy",
+        proxyType: "fuel_station",
+        placeName: "Nayara Fashion",
+        types: ["clothing_store"],
+      }),
+    ).toBe(false);
+  });
 });
 
 describe("dedupeDiscoveredHighwayPlaces", () => {
@@ -541,11 +635,17 @@ describe("seed catalog", () => {
 
     expect(proxyBrands.map((brand) => brand.brandName)).toEqual(
       expect.arrayContaining([
+        "Highway Nest",
+        "Highway Nest Mini",
+        "Highway Village",
         "Shell Select",
         "Indian Oil Swagat",
         "BPCL Ghar",
         "Jio-bp",
         "Cube Stop",
+        "Delhi Mumbai Expressway wayside amenity",
+        "Agra Lucknow Expressway amenities",
+        "Bundelkhand Expressway amenities",
         "NHAI Wayside Amenities",
         "HPCL Focus Outlet",
         "BPCL Pure for Sure Platinum",
@@ -553,8 +653,60 @@ describe("seed catalog", () => {
       ]),
     );
     expect(curatedStopCandidates.map((candidate) => candidate.name)).toEqual(
-      expect.arrayContaining(["Lavato", "Gargi Surya Vihar", "National Highway Dhaba", "Raha Highway Dhabas"]),
+      expect.arrayContaining([
+        "Lavato",
+        "Highway Nest Mini Toll Plaza",
+        "Yamuna Expressway service area",
+        "Delhi Mumbai Expressway rest area",
+        "Gargi Surya Vihar",
+        "National Highway Dhaba",
+        "Raha Highway Dhabas",
+      ]),
     );
+  });
+
+  it("classifies the new official Tier 1 seed families as wayside amenities", () => {
+    expect(
+      [
+        "Highway Nest",
+        "Highway Nest Mini",
+        "Highway Village",
+        "Delhi Mumbai Expressway wayside amenity",
+        "Agra Lucknow Expressway amenities",
+        "Bundelkhand Expressway amenities",
+      ].map((seedName) => classifyCleanToiletCandidate({ seedName, proxyType: "wayside_amenity" })),
+    ).toEqual(
+      expect.arrayContaining([
+        { cleanlinessTier: "tier_1", sourceCategory: "official_wayside_amenity", sourceEvidence: "Highway Nest" },
+        { cleanlinessTier: "tier_1", sourceCategory: "official_wayside_amenity", sourceEvidence: "Highway Nest Mini" },
+        { cleanlinessTier: "tier_1", sourceCategory: "official_wayside_amenity", sourceEvidence: "Highway Village" },
+      ]),
+    );
+  });
+
+  it("classifies branded fuel operators as Tier 2 fuel stops", () => {
+    expect(
+      ["Reliance", "Nayara Energy", "HPCL Focus Outlet", "Club HP"].map((seedName) =>
+        classifyCleanToiletCandidate({ seedName, proxyType: "fuel_station" }),
+      ),
+    ).toEqual(
+      expect.arrayContaining([
+        { cleanlinessTier: "tier_2", sourceCategory: "premium_fuel_program", sourceEvidence: "Reliance" },
+        { cleanlinessTier: "tier_2", sourceCategory: "premium_fuel_program", sourceEvidence: "Nayara Energy" },
+      ]),
+    );
+  });
+
+  it("has corridor coverage for every Tier 1 curated stop", () => {
+    const corridorKeys = new Set(
+      highwaySearchCorridors.map((corridor) => `${corridor.highwayName}::${corridor.routeContext}`),
+    );
+    const tierOneCuratedStopsWithoutCorridors = curatedStopCandidates
+      .filter((candidate) => classifyCleanToiletCandidate({ seedName: candidate.name, proxyType: candidate.proxyType }).cleanlinessTier === "tier_1")
+      .filter((candidate) => !corridorKeys.has(`${candidate.highwayContext}::${candidate.routeContext}`))
+      .map((candidate) => candidate.name);
+
+    expect(tierOneCuratedStopsWithoutCorridors).toEqual([]);
   });
 
   it("expands into enough bounded Google searches to discover a national 1500-place candidate set", () => {

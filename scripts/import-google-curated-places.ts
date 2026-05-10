@@ -4,12 +4,18 @@ import { createClient } from "@supabase/supabase-js";
 
 import {
   discoverGoogleCuratedPlaces,
+  filterAcceptedGoogleCuratedPlaceRowsForUpsert,
   toGoogleCuratedPlaceRows,
+  toRejectedGoogleCuratedPlaceRows,
+  type ExistingGoogleCuratedPlaceRow,
 } from "../src/lib/discovery/google-curated-place-import.ts";
+import type { CleanlinessTier } from "../src/lib/discovery/highway-place-discovery.ts";
 
 type ImportArgs = {
   dryRun: boolean;
   jobLimit?: number;
+  seedNames?: string[];
+  cleanlinessTiers?: CleanlinessTier[];
   maxTextSearchRequests?: number;
 };
 
@@ -29,6 +35,8 @@ const maxTextSearchRequests =
 const discovery = await discoverGoogleCuratedPlaces({
   apiKey: googleApiKey,
   jobLimit: args.jobLimit,
+  seedNames: args.seedNames,
+  cleanlinessTiers: args.cleanlinessTiers,
   maxTextSearchRequests,
   onProgress: ({ searchedJobs, totalJobs, matches, failures }) => {
     if (searchedJobs === 1 || searchedJobs % 100 === 0 || searchedJobs === totalJobs) {
@@ -38,6 +46,7 @@ const discovery = await discoverGoogleCuratedPlaces({
 });
 
 const rows = toGoogleCuratedPlaceRows(discovery.places);
+const rejectedRows = toRejectedGoogleCuratedPlaceRows(discovery.rejectedPlaces);
 
 console.log(
   JSON.stringify(
@@ -49,8 +58,11 @@ console.log(
       missingCorridorJobs: discovery.missingCorridorJobs,
       failedJobs: discovery.failedJobs,
       rawMatches: discovery.rawMatches,
+      rawRejectedMatches: discovery.rawRejectedMatches,
       uniquePlaces: discovery.places.length,
+      uniqueRejectedPlaces: discovery.rejectedPlaces.length,
       rowsToUpsert: rows.length,
+      rejectedRowsToUpsert: rejectedRows.length,
     },
     null,
     2,
@@ -66,7 +78,15 @@ const supabase = createClient(supabaseUrl, serviceRoleKey, {
 });
 
 let upsertedRows = 0;
-for (const batch of chunk(rows, 250)) {
+const existingRows = await fetchExistingGoogleCuratedPlaceRows(supabase, rows.map((row) => row.google_place_id));
+const rowsToUpsert = filterAcceptedGoogleCuratedPlaceRowsForUpsert(rows, existingRows);
+const skippedAcceptedRows = rows.length - rowsToUpsert.length;
+
+if (skippedAcceptedRows > 0) {
+  console.log(`accepted_rows_skipped_existing_stronger=${skippedAcceptedRows}`);
+}
+
+for (const batch of chunk(rowsToUpsert, 250)) {
   const { error } = await supabase.from("google_curated_places").upsert(batch, { onConflict: "google_place_id" });
 
   if (error) {
@@ -74,16 +94,35 @@ for (const batch of chunk(rows, 250)) {
   }
 
   upsertedRows += batch.length;
-  console.log(`upserted=${upsertedRows}/${rows.length}`);
+  console.log(`upserted=${upsertedRows}/${rowsToUpsert.length}`);
 }
 
-console.log(JSON.stringify({ ok: true, upsertedRows }, null, 2));
+let rejectedRowsAttempted = 0;
+for (const batch of chunk(rejectedRows, 250)) {
+  const { error } = await supabase.from("google_curated_places").upsert(batch, {
+    onConflict: "google_place_id",
+    ignoreDuplicates: true,
+  });
+
+  if (error) {
+    throw new Error(`Supabase rejected-row upsert failed: ${error.message}`);
+  }
+
+  rejectedRowsAttempted += batch.length;
+  console.log(`rejected_rows_attempted=${rejectedRowsAttempted}/${rejectedRows.length}`);
+}
+
+console.log(JSON.stringify({ ok: true, upsertedRows, skippedAcceptedRows, rejectedRowsAttempted }, null, 2));
 
 function parseArgs(argv: string[]): ImportArgs {
   const dryRun = argv.includes("--dry-run");
   const jobLimitArg = argv.find((arg) => arg.startsWith("--job-limit="));
+  const seedArgs = argv.filter((arg) => arg.startsWith("--seed="));
+  const tierArgs = argv.filter((arg) => arg.startsWith("--tier="));
   const maxTextSearchRequestsArg = argv.find((arg) => arg.startsWith("--max-text-search-requests="));
   const jobLimit = jobLimitArg ? Number(jobLimitArg.slice("--job-limit=".length)) : undefined;
+  const seedNames = parseCommaSeparatedArgs(seedArgs, "--seed=");
+  const cleanlinessTiers = parseTierArgs(tierArgs);
   const maxTextSearchRequests = maxTextSearchRequestsArg
     ? Number(maxTextSearchRequestsArg.slice("--max-text-search-requests=".length))
     : undefined;
@@ -99,7 +138,29 @@ function parseArgs(argv: string[]): ImportArgs {
     throw new Error("--max-text-search-requests must be a positive integer.");
   }
 
-  return { dryRun, jobLimit, maxTextSearchRequests };
+  return { dryRun, jobLimit, seedNames, cleanlinessTiers, maxTextSearchRequests };
+}
+
+function parseCommaSeparatedArgs(args: string[], prefix: string): string[] | undefined {
+  const values = args.flatMap((arg) => arg.slice(prefix.length).split(",")).map((value) => value.trim()).filter(Boolean);
+
+  return values.length > 0 ? values : undefined;
+}
+
+function parseTierArgs(args: string[]): CleanlinessTier[] | undefined {
+  const values = parseCommaSeparatedArgs(args, "--tier=");
+
+  if (!values) {
+    return undefined;
+  }
+
+  for (const value of values) {
+    if (!["tier_1", "tier_2", "tier_3", "tier_4"].includes(value)) {
+      throw new Error(`Unsupported --tier value: ${value}`);
+    }
+  }
+
+  return values as CleanlinessTier[];
 }
 
 function loadEnvFile(path: string) {
@@ -159,4 +220,27 @@ function chunk<T>(items: T[], size: number): T[][] {
   }
 
   return chunks;
+}
+
+async function fetchExistingGoogleCuratedPlaceRows(
+  supabaseClient: typeof supabase,
+  googlePlaceIds: string[],
+): Promise<ExistingGoogleCuratedPlaceRow[]> {
+  const uniquePlaceIds = [...new Set(googlePlaceIds)];
+  const existingRows: ExistingGoogleCuratedPlaceRow[] = [];
+
+  for (const batch of chunk(uniquePlaceIds, 250)) {
+    const { data, error } = await supabaseClient
+      .from("google_curated_places")
+      .select("google_place_id,cleanliness_tier,verification_status")
+      .in("google_place_id", batch);
+
+    if (error) {
+      throw new Error(`Supabase existing-row lookup failed: ${error.message}`);
+    }
+
+    existingRows.push(...((data ?? []) as ExistingGoogleCuratedPlaceRow[]));
+  }
+
+  return existingRows;
 }
