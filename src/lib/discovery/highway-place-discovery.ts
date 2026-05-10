@@ -115,6 +115,8 @@ export type DiscoveredHighwayPlace = {
   localNotes?: string;
 };
 
+const weakPlaceNameTokens = new Set(["and", "the", "fuel", "cafe", "restaurant", "hotel", "highway", "official", "service"]);
+
 export function buildHighwayPlacesSearchJobs(input: {
   proxyBrands: HygieneProxyBrand[];
   curatedStopCandidates: CuratedStopCandidate[];
@@ -189,6 +191,10 @@ export function filterHighwayPlaceMatches(input: {
       const distanceFromHighwayMeters = Math.round(distanceToPolylineMeters(place.location, input.corridor.polyline));
 
       if (distanceFromHighwayMeters > input.maxDiversionMeters) {
+        return [];
+      }
+
+      if (!isRelevantGooglePlaceNameMatch(input.job.seedName, place.displayName?.text)) {
         return [];
       }
 
@@ -329,6 +335,35 @@ function getJobCleanToiletClassification(job: GoogleTextSearchJob): CleanToiletC
   }
 
   return classifyCleanToiletCandidate({ seedName: job.seedName, proxyType: job.proxyType, notes: job.notes });
+}
+
+export function isRelevantGooglePlaceNameMatch(seedName: string, placeName: string | undefined): boolean {
+  if (!placeName) {
+    return false;
+  }
+
+  const normalizedPlaceName = normalizeForPlaceMatch(placeName);
+  const normalizedSeedName = normalizeForPlaceMatch(seedName);
+
+  if (!normalizedPlaceName || !normalizedSeedName) {
+    return false;
+  }
+
+  if (normalizedPlaceName.includes(normalizedSeedName) || normalizedSeedName.includes(normalizedPlaceName)) {
+    return true;
+  }
+
+  const tokens = seedName
+    .toLowerCase()
+    .replace(/&/g, " and ")
+    .split(/[^a-z0-9]+/)
+    .filter((token) => token.length >= 3 && !weakPlaceNameTokens.has(token));
+
+  return tokens.length > 0 && tokens.every((token) => normalizedPlaceName.includes(token));
+}
+
+function normalizeForPlaceMatch(input: string): string {
+  return input.toLowerCase().replace(/&/g, "and").replace(/[^a-z0-9]+/g, "");
 }
 
 function includesAny(input: string, needles: string[]): boolean {

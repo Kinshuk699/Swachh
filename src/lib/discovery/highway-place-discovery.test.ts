@@ -144,6 +144,60 @@ describe("filterHighwayPlaceMatches", () => {
     });
     expect(matches[0].distanceFromHighwayMeters).toBeLessThan(150);
   });
+
+  it("rejects unrelated fuzzy name matches before assigning official wayside labels", () => {
+    const matches = filterHighwayPlaceMatches({
+      job: {
+        id: "job-cube-stop-ahmedabad",
+        sourceKind: "proxy_brand",
+        textQuery: "Cube Stop Sarkhej-Gandhinagar Highway Ahmedabad-Gandhinagar India",
+        seedName: "Cube Stop",
+        expectedHighwayContext: "Sarkhej-Gandhinagar Highway",
+        expectedRouteContext: "Ahmedabad-Gandhinagar",
+        region: "West India",
+        proxyType: "wayside_amenity",
+        confidence: 0.9,
+        cleanlinessTier: "tier_1",
+        sourceCategory: "official_wayside_amenity",
+        sourceEvidence: "Cube Highways amenity with dedicated Wash Stop",
+        pageSize: 10,
+        regionCode: "IN",
+        fieldMask: googleTextSearchFieldMask,
+      },
+      corridor: {
+        id: "sg-highway",
+        highwayName: "Sarkhej-Gandhinagar Highway",
+        routeContext: "Ahmedabad-Gandhinagar",
+        region: "West India",
+        anchors: [],
+        polyline: [
+          { latitude: 23.02, longitude: 72.5 },
+          { latitude: 23.14, longitude: 72.54 },
+        ],
+      },
+      places: [
+        {
+          id: "icecube-seo-agency",
+          displayName: { text: "Icecube Digital" },
+          location: { latitude: 23.04, longitude: 72.506 },
+          types: ["marketing_agency"],
+        },
+        {
+          id: "valid-cube-stop",
+          displayName: { text: "Cube Stop Washroom" },
+          location: { latitude: 23.05, longitude: 72.51 },
+          types: ["rest_stop"],
+        },
+      ],
+      maxDiversionMeters: 2_000,
+    });
+
+    expect(matches.map((match) => match.placeId)).toEqual(["valid-cube-stop"]);
+    expect(matches[0]).toMatchObject({
+      cleanlinessTier: "tier_1",
+      sourceCategory: "official_wayside_amenity",
+    });
+  });
 });
 
 describe("dedupeDiscoveredHighwayPlaces", () => {

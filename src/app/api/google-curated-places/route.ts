@@ -1,7 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 
-import type { CleanlinessTier, ProxyType, SourceCategory } from "@/lib/discovery/highway-place-discovery";
+import { isRelevantGooglePlaceNameMatch, type CleanlinessTier, type ProxyType, type SourceCategory } from "@/lib/discovery/highway-place-discovery";
 import { getPlaceDetails, type GooglePlaceDetails } from "@/lib/google/places";
 import { cleanToiletDisplayLabel } from "@/lib/restrooms/clean-toilet-labels";
 import type { HighwayStop } from "@/lib/restrooms/sample-stops";
@@ -9,7 +9,6 @@ import type { HighwayStop } from "@/lib/restrooms/sample-stops";
 const DEFAULT_MAP_LIMIT = 40;
 const DEFAULT_MAX_MAP_LIMIT = 80;
 const publicMapStatuses = ["likely_clean", "verified_clean", "approved"] as const;
-const weakPlaceNameTokens = new Set(["and", "the", "fuel", "cafe", "restaurant", "hotel", "highway", "official", "service"]);
 
 const googleCuratedPlaceColumns = [
   "google_place_id",
@@ -211,26 +210,5 @@ function diversifyStoredRows(rows: GoogleCuratedPlaceRow[]): GoogleCuratedPlaceR
 }
 
 function isRelevantGooglePlaceMatch(row: GoogleCuratedPlaceRow, details: GooglePlaceDetails): boolean {
-  const normalizedPlaceName = normalizeForPlaceMatch(details.displayName);
-  const normalizedSeedName = normalizeForPlaceMatch(row.seed_name);
-
-  if (!normalizedPlaceName || !normalizedSeedName) {
-    return false;
-  }
-
-  if (normalizedPlaceName.includes(normalizedSeedName) || normalizedSeedName.includes(normalizedPlaceName)) {
-    return true;
-  }
-
-  const tokens = row.seed_name
-    .toLowerCase()
-    .replace(/&/g, " and ")
-    .split(/[^a-z0-9]+/)
-    .filter((token) => token.length >= 3 && !weakPlaceNameTokens.has(token));
-
-  return tokens.length > 0 && tokens.every((token) => normalizedPlaceName.includes(token));
-}
-
-function normalizeForPlaceMatch(input: string): string {
-  return input.toLowerCase().replace(/&/g, "and").replace(/[^a-z0-9]+/g, "");
+  return isRelevantGooglePlaceNameMatch(row.seed_name, details.displayName);
 }
