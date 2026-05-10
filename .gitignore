@@ -16,6 +16,7 @@
 
 # local reference clone for workflow skills
 /superpowers
+/.superpowers
 
 # local implementation worktrees
 /.worktrees
