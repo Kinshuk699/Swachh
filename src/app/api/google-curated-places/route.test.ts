@@ -78,6 +78,7 @@ describe("GET /api/google-curated-places", () => {
     const body = await response.json();
 
     expect(response.status).toBe(200);
+    expect(response.headers.get("Cache-Control")).toBe("public, s-maxage=3600, stale-while-revalidate=86400");
     expect(body.textSearchRequests).toBe(0);
     expect(body.placeDetailsRequests).toBe(1);
     expect(body.places[0]).toMatchObject({
@@ -98,6 +99,82 @@ describe("GET /api/google-curated-places", () => {
     expect(firstOrderSpy).toHaveBeenCalledWith("cleanliness_tier", { ascending: true });
     expect(secondOrderSpy).toHaveBeenCalledWith("restroom_confidence", { ascending: false });
     expect(limitSpy).toHaveBeenCalledWith(5);
+  });
+
+  it("supports all_found visibility for mapped Tier 1, Tier 2, and Tier 3 rows without rejected or Tier 4 rows", async () => {
+    process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
+    process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role-key";
+    process.env.GOOGLE_MAPS_SERVER_API_KEY = "server-key";
+    limitSpy.mockResolvedValue({
+      data: [
+        {
+          google_place_id: "tier-three-food-plaza-id",
+          seed_name: "Village Food Courts",
+          region: "South India",
+          proxy_type: "food_plaza",
+          cleanliness_tier: "tier_3",
+          source_category: "food_plaza",
+          source_evidence: "Organized food plaza",
+          highway_name: "NH-44",
+          route_context: "Bengaluru-Hyderabad",
+          restroom_confidence: 0.82,
+          distance_from_highway_meters: 180,
+          local_notes: "Organized food plaza",
+          verification_status: "matched",
+        },
+        {
+          google_place_id: "tier-four-dhaba-id",
+          seed_name: "Local Dhaba",
+          region: "North India",
+          proxy_type: "dhaba_proxy",
+          cleanliness_tier: "tier_4",
+          source_category: "dhaba_candidate",
+          source_evidence: "Long-tail dhaba candidate",
+          highway_name: "NH-44",
+          route_context: "Bengaluru-Hyderabad",
+          restroom_confidence: 0.58,
+          distance_from_highway_meters: 180,
+          local_notes: "Long-tail dhaba candidate",
+          verification_status: "matched",
+        },
+      ],
+      error: null,
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL | Request) => {
+        const url = String(input);
+        return new Response(
+          JSON.stringify({
+            id: url.includes("tier-four-dhaba-id") ? "tier-four-dhaba-id" : "tier-three-food-plaza-id",
+            displayName: { text: url.includes("tier-four-dhaba-id") ? "Local Dhaba" : "Village Food Courts" },
+            location: { latitude: 13.65, longitude: 77.6 },
+            types: ["restaurant", "food"],
+            googleMapsUri: "https://maps.google.com/?cid=456",
+          }),
+          { status: 200 },
+        );
+      }),
+    );
+    const { GET } = await import("./route");
+
+    const response = await GET(new Request("http://localhost/api/google-curated-places?visibility=all_found&limit=500"));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.visibility).toBe("all_found");
+    expect(body.textSearchRequests).toBe(0);
+    expect(body.places).toHaveLength(1);
+    expect(body.places[0]).toMatchObject({
+      placeId: "tier-three-food-plaza-id",
+      highway: "NH-44",
+      locality: "Bengaluru-Hyderabad",
+      cleanlinessTier: "tier_3",
+      verificationStatus: "matched",
+    });
+    expect(inSpy).toHaveBeenCalledWith("verification_status", ["likely_clean", "matched", "verified_clean", "approved"]);
+    expect(limitSpy).toHaveBeenCalledWith(2000);
+    expect(fetch).not.toHaveBeenCalledWith(expect.stringContaining("tier-four-dhaba-id"), expect.anything());
   });
 
   it("skips stored candidates when Google Details resolves to a mismatched place name", async () => {

@@ -14,6 +14,8 @@ export type HighwayStop = CandidateStop & {
   isPaidPremium?: boolean;
   cleanlinessLabel?: string;
   sourceLabel?: string;
+  cleanlinessTier?: "tier_1" | "tier_2" | "tier_3" | "tier_4";
+  verificationStatus?: "likely_clean" | "matched" | "verified_clean" | "approved";
 };
 
 export const sampleHighwayStops: HighwayStop[] = [

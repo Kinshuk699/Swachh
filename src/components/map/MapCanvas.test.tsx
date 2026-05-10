@@ -18,9 +18,9 @@ vi.mock("@vis.gl/react-google-maps", () => ({
     </button>
   ),
   InfoWindow: ({ children }: { children: ReactNode }) => <div data-testid="info-window">{children}</div>,
-  Polyline: ({ encodedPath, strokeColor }: { encodedPath?: string; strokeColor?: string }) => (
-    <div data-encoded-path={encodedPath} data-stroke-color={strokeColor} data-testid="route-polyline" />
-  ),
+  useMap: () => ({
+    fitBounds: vi.fn(),
+  }),
 }));
 
 describe("MapCanvas", () => {
@@ -48,7 +48,84 @@ describe("MapCanvas", () => {
     expect(screen.queryByRole("img", { name: /swachh national highway atlas/i })).toBeNull();
     expect(screen.getByTestId("google-map").getAttribute("data-has-styles")).toBe("true");
     await waitFor(() => expect(screen.getByText(/highway stops/i)).toBeTruthy());
-    expect(fetch).toHaveBeenCalledWith("/api/google-curated-places?limit=24");
+    expect(fetch).toHaveBeenCalledWith("/api/google-curated-places?visibility=all_found&limit=1000");
+  });
+
+  it("loads all found stops and cached National Highways for the map atlas", async () => {
+    process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY = "browser-key";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL | Request) => {
+        const url = String(input);
+        if (url.includes("/api/highways/national")) {
+          return new Response(
+            JSON.stringify({
+              source: "openstreetmap",
+              attribution: "© OpenStreetMap contributors",
+              generatedAt: "2026-05-11T00:00:00.000Z",
+              highways: [
+                {
+                  id: "nh-44-south-sample",
+                  ref: "NH-44",
+                  name: "National Highway 44",
+                  color: "#2563eb",
+                  bounds: { north: 15.83, south: 13.05, east: 77.7, west: 77.59 },
+                  geometry: { type: "LineString", coordinates: [[77.59, 13.05], [77.7, 13.2], [77.6, 13.65]] },
+                },
+              ],
+            }),
+            { status: 200 },
+          );
+        }
+
+        return new Response(
+          JSON.stringify({
+            visibility: "all_found",
+            places: [
+              {
+                id: "google-tier-three",
+                name: "Village Food Courts",
+                category: "food_plaza",
+                distanceFromRouteMeters: 180,
+                distanceFromHighwayMeters: 180,
+                detourMinutes: 1,
+                isEndpointStagingArea: false,
+                isInsideDenseCity: false,
+                source: "google_place",
+                confidence: 0.82,
+                openNow: false,
+                verified: false,
+                lat: 13.65,
+                lng: 77.6,
+                highway: "NH-44",
+                locality: "Bengaluru-Hyderabad",
+                priceLabel: "Customer access",
+                facilities: ["Food plaza"],
+                placeId: "tier-three-food-plaza-id",
+                cleanlinessLabel: "Food plaza candidate",
+                sourceLabel: "Food plaza candidate",
+                cleanlinessTier: "tier_3",
+                verificationStatus: "matched",
+              },
+            ],
+            storedRowsRead: 1,
+            placeDetailsRequests: 1,
+            textSearchRequests: 0,
+            capped: false,
+          }),
+          { status: 200 },
+        );
+      }),
+    );
+
+    render(<MapCanvas stops={[]} selectedStopId="" onSelectStop={() => {}} />);
+
+    await waitFor(() => expect(fetch).toHaveBeenCalledWith("/api/google-curated-places?visibility=all_found&limit=1000"));
+    expect(fetch).toHaveBeenCalledWith("/api/highways/national");
+    expect(await screen.findByText("NH-44")).toBeTruthy();
+    expect(screen.getByText("© OpenStreetMap contributors")).toBeTruthy();
+    expect(screen.getByText(/Tier 3/i)).toBeTruthy();
+    expect(screen.getByText("Village Food Courts")).toBeTruthy();
   });
 
   it("shows a Google Maps configuration message when the browser key is missing", () => {

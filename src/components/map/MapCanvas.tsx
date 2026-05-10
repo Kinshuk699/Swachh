@@ -1,7 +1,7 @@
 "use client";
 
-import { APIProvider, InfoWindow, Map, Marker } from "@vis.gl/react-google-maps";
-import { AlertTriangle, ExternalLink, Loader2, MapPinned, ShieldCheck } from "lucide-react";
+import { APIProvider, InfoWindow, Map, Marker, useMap } from "@vis.gl/react-google-maps";
+import { AlertTriangle, ExternalLink, Loader2, MapPinned, Route, ShieldCheck } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import type { GooglePlaceDetails } from "@/lib/google/places";
@@ -22,10 +22,52 @@ type CuratedPlacesResponse = {
   capped?: boolean;
 };
 
+type HighwayGeometry = {
+  type: "LineString" | "MultiLineString";
+  coordinates: number[][] | number[][][];
+};
+
+type NationalHighwayOverlay = {
+  id: string;
+  ref: string;
+  name?: string;
+  color: string;
+  bounds: { north: number; south: number; east: number; west: number };
+  geometry: HighwayGeometry;
+};
+
+type NationalHighwaysResponse = {
+  source?: "openstreetmap";
+  attribution?: string;
+  generatedAt?: string;
+  highways?: NationalHighwayOverlay[];
+};
+
+type MapLatLng = { lat: number; lng: number };
+
+type RuntimePolyline = {
+  setMap: (map: unknown | null) => void;
+};
+
+type RuntimeGoogleMaps = {
+  maps?: {
+    Polyline: new (options: {
+      clickable: boolean;
+      geodesic: boolean;
+      map: unknown;
+      path: MapLatLng[];
+      strokeColor: string;
+      strokeOpacity: number;
+      strokeWeight: number;
+    }) => RuntimePolyline;
+  };
+};
+
 const indiaCenter = { lat: 22.9734, lng: 78.6569 };
-const storedCuratedMapLimit = 24;
+const storedCuratedMapLimit = 1000;
 const standardMarkerIconUrl = "https://maps.google.com/mapfiles/ms/icons/red-dot.png";
 const premiumMarkerIconUrl = "https://maps.google.com/mapfiles/ms/icons/yellow-dot.png";
+const tierThreeMarkerIconUrl = "https://maps.google.com/mapfiles/ms/icons/orange-dot.png";
 
 const highwayFocusedMapStyles = [
   {
@@ -57,6 +99,9 @@ export function MapCanvas({ stops, routePolyline, onSelectStop }: MapCanvasProps
   const [curatedLoading, setCuratedLoading] = useState(false);
   const [activeInfoStopId, setActiveInfoStopId] = useState<string | null>(null);
   const [placeDetailsById, setPlaceDetailsById] = useState<Record<string, GooglePlaceDetails>>({});
+  const [nationalHighways, setNationalHighways] = useState<NationalHighwayOverlay[]>([]);
+  const [highwayAttribution, setHighwayAttribution] = useState("");
+  const [selectedHighwayId, setSelectedHighwayId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!apiKey) {
@@ -66,7 +111,7 @@ export function MapCanvas({ stops, routePolyline, onSelectStop }: MapCanvasProps
     let cancelled = false;
     setCuratedLoading(true);
 
-    fetch(`/api/google-curated-places?limit=${storedCuratedMapLimit}`)
+    fetch(`/api/google-curated-places?visibility=all_found&limit=${storedCuratedMapLimit}`)
       .then((response) => (response.ok ? response.json() : null))
       .then((body: CuratedPlacesResponse | null) => {
         if (cancelled || !body) {
@@ -89,6 +134,35 @@ export function MapCanvas({ stops, routePolyline, onSelectStop }: MapCanvasProps
       .finally(() => {
         if (!cancelled) {
           setCuratedLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [apiKey]);
+
+  useEffect(() => {
+    if (!apiKey) {
+      return;
+    }
+
+    let cancelled = false;
+
+    fetch("/api/highways/national")
+      .then((response) => (response.ok ? response.json() : null))
+      .then((body: NationalHighwaysResponse | null) => {
+        if (cancelled || !body) {
+          return;
+        }
+
+        setNationalHighways(body.highways ?? []);
+        setHighwayAttribution(body.attribution ?? "");
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setNationalHighways([]);
+          setHighwayAttribution("");
         }
       });
 
@@ -152,11 +226,13 @@ export function MapCanvas({ stops, routePolyline, onSelectStop }: MapCanvasProps
           streetViewControl={false}
           styles={highwayFocusedMapStyles}
         >
+          <NationalHighwayPolylines highways={nationalHighways} selectedHighwayId={selectedHighwayId} />
+
           {mapStops.map((stop) => (
             <Marker
               key={stop.id}
               clickable
-              icon={isPremiumPaidStop(stop) ? premiumMarkerIconUrl : standardMarkerIconUrl}
+              icon={markerIconForStop(stop)}
               onClick={() => {
                 onSelectStop(stop.id);
                 setActiveInfoStopId(stop.id);
@@ -186,8 +262,40 @@ export function MapCanvas({ stops, routePolyline, onSelectStop }: MapCanvasProps
         <div className="mt-2 flex flex-wrap gap-2 text-[11px] font-medium">
           <span className="rounded-full bg-yellow-100 px-2 py-1 text-yellow-900">Premium restroom</span>
           <span className="rounded-full bg-emerald-100 px-2 py-1 text-emerald-800">Likely clean stop</span>
+          <span className="rounded-full bg-orange-100 px-2 py-1 text-orange-800">Tier 3</span>
         </div>
       </div>
+
+      {nationalHighways.length ? (
+        <div className="absolute right-4 top-4 max-h-[min(32rem,calc(100%-2rem))] w-[min(21rem,calc(100%-2rem))] overflow-y-auto rounded-lg border bg-white/95 p-3 text-stone-950 shadow-sm backdrop-blur">
+          <div className="flex items-center gap-2 text-sm font-semibold">
+            <Route className="size-4 text-emerald-700" aria-hidden="true" />
+            National Highways
+          </div>
+          <div className="mt-3 space-y-2">
+            {nationalHighways.map((highway) => {
+              const stopCount = countStopsForHighway(mapStops, highway.ref);
+              return (
+                <button
+                  key={highway.id}
+                  className={`grid w-full grid-cols-[1rem_1fr_auto] items-center gap-2 rounded-md border px-2 py-2 text-left text-xs transition ${
+                    selectedHighwayId === highway.id ? "border-emerald-500 bg-emerald-50" : "border-stone-200 bg-white hover:border-emerald-300"
+                  }`}
+                  onClick={() => setSelectedHighwayId(highway.id)}
+                  type="button"
+                >
+                  <span className="h-1.5 rounded-full" style={{ backgroundColor: highway.color }} />
+                  <span>
+                    <span className="block font-semibold">{highway.ref}</span>
+                    <span className="block text-stone-500">{highway.name ?? "National Highway"}</span>
+                  </span>
+                  <span className="rounded-full bg-emerald-100 px-2 py-1 font-semibold text-emerald-800">{stopCount}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
 
       <div className="pointer-events-none absolute bottom-4 left-4 max-w-[min(26rem,calc(100%-2rem))] rounded-lg border bg-white/92 px-4 py-3 text-xs text-stone-700 shadow-sm backdrop-blur">
         <div className="flex items-center gap-2 font-medium text-stone-950">
@@ -201,9 +309,52 @@ export function MapCanvas({ stops, routePolyline, onSelectStop }: MapCanvasProps
               ? "Click a marker for hours, access type, and directions."
               : "Click a marker for hours, access type, and directions."}
         </p>
+        {highwayAttribution ? <p className="mt-1 text-[11px] text-stone-500">{highwayAttribution}</p> : null}
       </div>
     </div>
   );
+}
+
+function NationalHighwayPolylines({ highways, selectedHighwayId }: { highways: NationalHighwayOverlay[]; selectedHighwayId: string | null }) {
+  const map = useMap();
+
+  useEffect(() => {
+    const googleMaps = (globalThis as typeof globalThis & { google?: RuntimeGoogleMaps }).google?.maps;
+    if (!map || !googleMaps) {
+      return;
+    }
+
+    const polylines = highways.flatMap((highway) =>
+      toGooglePaths(highway.geometry).map(
+        (path) =>
+          new googleMaps.Polyline({
+            clickable: false,
+            geodesic: true,
+            map,
+            path,
+            strokeColor: highway.color,
+            strokeOpacity: selectedHighwayId && selectedHighwayId !== highway.id ? 0.28 : 0.86,
+            strokeWeight: selectedHighwayId === highway.id ? 6 : 4,
+          }),
+      ),
+    );
+
+    const selectedHighway = highways.find((highway) => highway.id === selectedHighwayId);
+    if (selectedHighway) {
+      map.fitBounds(selectedHighway.bounds);
+    }
+
+    return () => {
+      polylines.forEach((polyline) => polyline.setMap(null));
+    };
+  }, [highways, map, selectedHighwayId]);
+
+  return null;
+}
+
+function toGooglePaths(geometry: HighwayGeometry): MapLatLng[][] {
+  const lines = geometry.type === "LineString" ? [geometry.coordinates as number[][]] : (geometry.coordinates as number[][][]);
+  return lines.map((coordinates) => coordinates.map(([lng, lat]) => ({ lat, lng })));
 }
 
 function PlaceInfoWindow({ stop, details }: { stop: HighwayStop; details?: GooglePlaceDetails }) {
@@ -251,6 +402,29 @@ function PlaceInfoWindow({ stop, details }: { stop: HighwayStop; details?: Googl
 
 function isPremiumPaidStop(stop: HighwayStop): boolean {
   return stop.isPaidPremium === true || stop.priceLabel === "Paid";
+}
+
+function normalizeHighwayLabel(value: string): string {
+  const trimmed = value.trim().toUpperCase();
+  const match = trimmed.match(/^NH\s*-?\s*(\d+[A-Z]?)$/);
+  return match ? `NH-${match[1]}` : trimmed.replace(/\s+/g, " ");
+}
+
+function countStopsForHighway(stops: HighwayStop[], highwayRef: string): number {
+  const normalizedRef = normalizeHighwayLabel(highwayRef);
+  return stops.filter((stop) => normalizeHighwayLabel(stop.highway) === normalizedRef).length;
+}
+
+function markerIconForStop(stop: HighwayStop): string {
+  if (stop.cleanlinessTier === "tier_1" || isPremiumPaidStop(stop)) {
+    return premiumMarkerIconUrl;
+  }
+
+  if (stop.cleanlinessTier === "tier_3") {
+    return tierThreeMarkerIconUrl;
+  }
+
+  return standardMarkerIconUrl;
 }
 
 function dedupeStops(stops: HighwayStop[]): HighwayStop[] {
