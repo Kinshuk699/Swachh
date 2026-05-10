@@ -709,6 +709,35 @@ describe("seed catalog", () => {
     expect(tierOneCuratedStopsWithoutCorridors).toEqual([]);
   });
 
+  it("has corridor coverage for staged Tier 3 curated road stops", () => {
+    const stagedTierThreeCuratedStops = new Set([
+      "Amaravathi Savera Group",
+      "Big Bay India",
+      "City Residency",
+      "Gallops Food Plaza",
+      "Gargi Surya Vihar",
+      "Greenhouse",
+      "Hotel Highway King Bagru",
+      "Hotel Highway King Kishangarh",
+      "Hotel Highway King Neemrana",
+      "Hotel Highway King Shahpura",
+      "Hotel Ummiya Annapurna Kathiyawad",
+      "Jai Bhuvaneswari Miltry Hotel",
+      "Mother's Kitchen",
+      "SN Highway Food Mall",
+    ]);
+    const corridorKeys = new Set(
+      highwaySearchCorridors.map((corridor) => `${corridor.highwayName}::${corridor.routeContext}`),
+    );
+    const stagedTierThreeCuratedStopsWithoutCorridors = curatedStopCandidates
+      .filter((candidate) => stagedTierThreeCuratedStops.has(candidate.name))
+      .filter((candidate) => classifyCleanToiletCandidate({ seedName: candidate.name, proxyType: candidate.proxyType }).cleanlinessTier === "tier_3")
+      .filter((candidate) => !corridorKeys.has(`${candidate.highwayContext}::${candidate.routeContext}`))
+      .map((candidate) => candidate.name);
+
+    expect(stagedTierThreeCuratedStopsWithoutCorridors).toEqual([]);
+  });
+
   it("expands into enough bounded Google searches to discover a national 1500-place candidate set", () => {
     const jobs = buildHighwayPlacesSearchJobs({ proxyBrands, curatedStopCandidates, corridors: highwaySearchCorridors });
 
