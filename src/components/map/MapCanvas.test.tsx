@@ -48,7 +48,7 @@ describe("MapCanvas", () => {
     expect(screen.queryByRole("img", { name: /swachh national highway atlas/i })).toBeNull();
     expect(screen.getByTestId("google-map").getAttribute("data-has-styles")).toBe("true");
     await waitFor(() => expect(screen.getByText(/highway stops/i)).toBeTruthy());
-    expect(fetch).toHaveBeenCalledWith("/api/google-curated-places?limit=40");
+    expect(fetch).toHaveBeenCalledWith("/api/google-curated-places?limit=24");
   });
 
   it("shows a Google Maps configuration message when the browser key is missing", () => {

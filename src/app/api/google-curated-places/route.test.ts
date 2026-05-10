@@ -96,7 +96,7 @@ describe("GET /api/google-curated-places", () => {
     expect(inSpy).toHaveBeenCalledWith("verification_status", ["likely_clean", "verified_clean", "approved"]);
     expect(firstOrderSpy).toHaveBeenCalledWith("cleanliness_tier", { ascending: true });
     expect(secondOrderSpy).toHaveBeenCalledWith("restroom_confidence", { ascending: false });
-    expect(limitSpy).toHaveBeenCalledWith(1);
+    expect(limitSpy).toHaveBeenCalledWith(5);
   });
 
   it("skips stored candidates when Google Details resolves to a mismatched place name", async () => {

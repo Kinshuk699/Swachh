@@ -65,6 +65,7 @@ export async function GET(request: Request) {
   }
 
   const limit = getRequestedLimit(request);
+  const storedRowLimit = Math.min(limit * 5, 200);
   const supabase = createClient(supabaseUrl, serviceRoleKey, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
@@ -74,7 +75,7 @@ export async function GET(request: Request) {
     .in("verification_status", [...publicMapStatuses])
     .order("cleanliness_tier", { ascending: true })
     .order("restroom_confidence", { ascending: false })
-    .limit(limit);
+    .limit(storedRowLimit);
 
   if (error) {
     return NextResponse.json(
@@ -91,8 +92,9 @@ export async function GET(request: Request) {
   }
 
   const rows = (data ?? []) as unknown as GoogleCuratedPlaceRow[];
+  const candidateRows = diversifyStoredRows(rows).slice(0, limit);
   const placeResults = await Promise.all(
-    rows.map(async (row) => {
+    candidateRows.map(async (row) => {
       try {
         const details = await getPlaceDetails(row.google_place_id, { apiKey });
         if (!isRelevantGooglePlaceMatch(row, details)) {
@@ -110,9 +112,9 @@ export async function GET(request: Request) {
   return NextResponse.json({
     places,
     storedRowsRead: rows.length,
-    placeDetailsRequests: rows.length,
+    placeDetailsRequests: candidateRows.length,
     textSearchRequests: 0,
-    capped: rows.length === limit,
+    capped: rows.length === storedRowLimit || candidateRows.length === limit,
   });
 }
 
@@ -178,6 +180,34 @@ function toStopCategory(proxyType: ProxyType): HighwayStop["category"] {
   }
 
   return "restaurant_proxy";
+}
+
+function diversifyStoredRows(rows: GoogleCuratedPlaceRow[]): GoogleCuratedPlaceRow[] {
+  const groups = new Map<string, GoogleCuratedPlaceRow[]>();
+
+  for (const row of rows) {
+    const groupKey = `${row.source_category}:${row.seed_name.toLowerCase()}`;
+    const group = groups.get(groupKey) ?? [];
+    group.push(row);
+    groups.set(groupKey, group);
+  }
+
+  const diversifiedRows: GoogleCuratedPlaceRow[] = [];
+  const groupValues = [...groups.values()];
+  let groupIndex = 0;
+
+  while (groupValues.some((group) => group.length > 0)) {
+    const group = groupValues[groupIndex % groupValues.length];
+    const row = group.shift();
+
+    if (row) {
+      diversifiedRows.push(row);
+    }
+
+    groupIndex += 1;
+  }
+
+  return diversifiedRows;
 }
 
 function isRelevantGooglePlaceMatch(row: GoogleCuratedPlaceRow, details: GooglePlaceDetails): boolean {

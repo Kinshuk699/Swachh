@@ -23,6 +23,7 @@ type CuratedPlacesResponse = {
 };
 
 const indiaCenter = { lat: 22.9734, lng: 78.6569 };
+const storedCuratedMapLimit = 24;
 const standardMarkerIconUrl = "https://maps.google.com/mapfiles/ms/icons/red-dot.png";
 const premiumMarkerIconUrl = "https://maps.google.com/mapfiles/ms/icons/yellow-dot.png";
 
@@ -65,7 +66,7 @@ export function MapCanvas({ stops, routePolyline, onSelectStop }: MapCanvasProps
     let cancelled = false;
     setCuratedLoading(true);
 
-    fetch("/api/google-curated-places?limit=40")
+    fetch(`/api/google-curated-places?limit=${storedCuratedMapLimit}`)
       .then((response) => (response.ok ? response.json() : null))
       .then((body: CuratedPlacesResponse | null) => {
         if (cancelled || !body) {
