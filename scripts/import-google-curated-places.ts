@@ -2,21 +2,27 @@ import { existsSync, readFileSync } from "node:fs";
 
 import { createClient } from "@supabase/supabase-js";
 
+import { buildNationalHighwaySearchCorridors } from "../src/lib/discovery/national-highway-corridors.ts";
 import {
   discoverGoogleCuratedPlaces,
   filterAcceptedGoogleCuratedPlaceRowsForUpsert,
+  planGoogleCuratedPlaceDiscovery,
   toGoogleCuratedPlaceRows,
   toRejectedGoogleCuratedPlaceRows,
   type ExistingGoogleCuratedPlaceRow,
 } from "../src/lib/discovery/google-curated-place-import.ts";
-import type { CleanlinessTier } from "../src/lib/discovery/highway-place-discovery.ts";
+import { getCachedNationalHighwayOverlays } from "../src/lib/highways/national-highways.ts";
+import type { CleanlinessTier, HighwaySearchCorridor } from "../src/lib/discovery/highway-place-discovery.ts";
 
 type ImportArgs = {
   dryRun: boolean;
+  planOnly: boolean;
+  corridorSource: "seeded" | "national-highways";
   jobLimit?: number;
   seedNames?: string[];
   cleanlinessTiers?: CleanlinessTier[];
   maxTextSearchRequests?: number;
+  maxDiversionMeters?: number;
 };
 
 const defaultTextSearchMonthlyFreeCap = 35_000;
@@ -24,20 +30,51 @@ const defaultTextSearchMonthlyFreeCap = 35_000;
 loadEnvFile(".env.local");
 
 const args = parseArgs(process.argv.slice(2));
-const googleApiKey = requireEnv("GOOGLE_MAPS_SERVER_API_KEY");
-const supabaseUrl = requireEnv("NEXT_PUBLIC_SUPABASE_URL");
-const serviceRoleKey = requireEnv("SUPABASE_SERVICE_ROLE_KEY");
+const corridors = buildDiscoveryCorridors(args.corridorSource);
 const maxTextSearchRequests =
   args.maxTextSearchRequests ??
   readPositiveIntegerEnv("GOOGLE_PLACES_TEXT_SEARCH_MONTHLY_REMAINING") ??
   defaultTextSearchMonthlyFreeCap;
 
-const discovery = await discoverGoogleCuratedPlaces({
-  apiKey: googleApiKey,
+const plan = planGoogleCuratedPlaceDiscovery({
+  corridors,
   jobLimit: args.jobLimit,
   seedNames: args.seedNames,
   cleanlinessTiers: args.cleanlinessTiers,
   maxTextSearchRequests,
+  maxDiversionMeters: args.maxDiversionMeters,
+});
+
+if (args.planOnly) {
+  console.log(
+    JSON.stringify(
+      {
+        planOnly: true,
+        dryRun: args.dryRun,
+        corridorSource: args.corridorSource,
+        seedNames: args.seedNames,
+        cleanlinessTiers: args.cleanlinessTiers,
+        ...plan,
+      },
+      null,
+      2,
+    ),
+  );
+  process.exit(0);
+}
+
+const googleApiKey = requireEnv("GOOGLE_MAPS_SERVER_API_KEY");
+const supabaseUrl = requireEnv("NEXT_PUBLIC_SUPABASE_URL");
+const serviceRoleKey = requireEnv("SUPABASE_SERVICE_ROLE_KEY");
+
+const discovery = await discoverGoogleCuratedPlaces({
+  apiKey: googleApiKey,
+  corridors,
+  jobLimit: args.jobLimit,
+  seedNames: args.seedNames,
+  cleanlinessTiers: args.cleanlinessTiers,
+  maxTextSearchRequests,
+  maxDiversionMeters: args.maxDiversionMeters,
   onProgress: ({ searchedJobs, totalJobs, matches, failures }) => {
     if (searchedJobs === 1 || searchedJobs % 100 === 0 || searchedJobs === totalJobs) {
       console.log(`searched=${searchedJobs}/${totalJobs} raw_matches=${matches} failures=${failures}`);
@@ -52,7 +89,9 @@ console.log(
   JSON.stringify(
     {
       dryRun: args.dryRun,
+      corridorSource: args.corridorSource,
       maxTextSearchRequests,
+      maxDiversionMeters: args.maxDiversionMeters ?? 2_000,
       totalJobs: discovery.totalJobs,
       searchedJobs: discovery.searchedJobs,
       missingCorridorJobs: discovery.missingCorridorJobs,
@@ -116,16 +155,27 @@ console.log(JSON.stringify({ ok: true, upsertedRows, skippedAcceptedRows, reject
 
 function parseArgs(argv: string[]): ImportArgs {
   const dryRun = argv.includes("--dry-run");
+  const planOnly = argv.includes("--plan-only");
+  const corridorSourceArg = argv.find((arg) => arg.startsWith("--corridor-source="));
   const jobLimitArg = argv.find((arg) => arg.startsWith("--job-limit="));
   const seedArgs = argv.filter((arg) => arg.startsWith("--seed="));
   const tierArgs = argv.filter((arg) => arg.startsWith("--tier="));
   const maxTextSearchRequestsArg = argv.find((arg) => arg.startsWith("--max-text-search-requests="));
+  const maxDiversionMetersArg = argv.find((arg) => arg.startsWith("--max-diversion-meters="));
   const jobLimit = jobLimitArg ? Number(jobLimitArg.slice("--job-limit=".length)) : undefined;
   const seedNames = parseCommaSeparatedArgs(seedArgs, "--seed=");
   const cleanlinessTiers = parseTierArgs(tierArgs);
   const maxTextSearchRequests = maxTextSearchRequestsArg
     ? Number(maxTextSearchRequestsArg.slice("--max-text-search-requests=".length))
     : undefined;
+  const maxDiversionMeters = maxDiversionMetersArg
+    ? Number(maxDiversionMetersArg.slice("--max-diversion-meters=".length))
+    : undefined;
+  const corridorSource = corridorSourceArg?.slice("--corridor-source=".length) ?? "seeded";
+
+  if (corridorSource !== "seeded" && corridorSource !== "national-highways") {
+    throw new Error("--corridor-source must be either seeded or national-highways.");
+  }
 
   if (typeof jobLimit === "number" && (!Number.isInteger(jobLimit) || jobLimit <= 0)) {
     throw new Error("--job-limit must be a positive integer.");
@@ -138,7 +188,15 @@ function parseArgs(argv: string[]): ImportArgs {
     throw new Error("--max-text-search-requests must be a positive integer.");
   }
 
-  return { dryRun, jobLimit, seedNames, cleanlinessTiers, maxTextSearchRequests };
+  if (typeof maxDiversionMeters === "number" && (!Number.isInteger(maxDiversionMeters) || maxDiversionMeters <= 0)) {
+    throw new Error("--max-diversion-meters must be a positive integer.");
+  }
+
+  return { dryRun, planOnly, corridorSource, jobLimit, seedNames, cleanlinessTiers, maxTextSearchRequests, maxDiversionMeters };
+}
+
+function buildDiscoveryCorridors(corridorSource: ImportArgs["corridorSource"]): HighwaySearchCorridor[] | undefined {
+  return corridorSource === "national-highways" ? buildNationalHighwaySearchCorridors(getCachedNationalHighwayOverlays()) : undefined;
 }
 
 function parseCommaSeparatedArgs(args: string[], prefix: string): string[] | undefined {

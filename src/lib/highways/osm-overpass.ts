@@ -18,6 +18,11 @@ type FormatDatasetInput = {
   features: CachedNationalHighwayFeature[];
 };
 
+type OverpassTransformOptions = {
+  groupByRef?: boolean;
+  simplifyToleranceDegrees?: number;
+};
+
 const nationalHighwayRefPattern = /(^|;|\s)NH\s*-?\s*\d+[A-Z]?/i;
 const supportedHighwayClasses = new Set(["motorway", "trunk", "primary", "secondary"]);
 
@@ -30,16 +35,18 @@ area["ISO3166-1"="IN"][admin_level=2]->.india;
 out geom;`;
 }
 
-export function overpassJsonToCachedHighways(body: OverpassJson): CachedNationalHighwayFeature[] {
-  return (body.elements ?? [])
+export function overpassJsonToCachedHighways(body: OverpassJson, options: OverpassTransformOptions = {}): CachedNationalHighwayFeature[] {
+  const features = (body.elements ?? [])
     .filter((element) => element.type === "way")
     .filter((element) => Boolean(element.geometry?.length))
-    .map(toCachedFeature)
+    .map((element) => toCachedFeature(element, options))
     .filter((feature): feature is CachedNationalHighwayFeature => Boolean(feature));
+
+  return options.groupByRef ? groupFeaturesByRef(features) : features;
 }
 
 export function formatNationalHighwayDatasetModule(input: FormatDatasetInput): string {
-  const featureText = JSON.stringify(input.features, null, 2).replace(/"([^"\\]+)":/g, "$1:");
+  const featureText = JSON.stringify(input.features);
 
   return `export type CachedHighwayGeometry = {
   type: "LineString" | "MultiLineString";
@@ -66,7 +73,7 @@ export const nationalHighwayDataset = {
 `;
 }
 
-function toCachedFeature(element: OverpassElement): CachedNationalHighwayFeature | null {
+function toCachedFeature(element: OverpassElement, options: OverpassTransformOptions): CachedNationalHighwayFeature | null {
   const ref = element.tags?.ref;
   const geometry = element.geometry;
 
@@ -79,6 +86,8 @@ function toCachedFeature(element: OverpassElement): CachedNationalHighwayFeature
     return null;
   }
 
+  const coordinates = geometry.map((point) => [roundCoordinate(point.lon), roundCoordinate(point.lat)]);
+
   return {
     id: `osm-${element.type}-${element.id}`,
     ref: normalizeHighwayRef(ref.split(";")[0]),
@@ -89,9 +98,84 @@ function toCachedFeature(element: OverpassElement): CachedNationalHighwayFeature
     isExpressway: false,
     geometry: {
       type: "LineString",
-      coordinates: geometry.map((point) => [point.lon, point.lat]),
+      coordinates: simplifyLine(coordinates, options.simplifyToleranceDegrees ?? 0),
     },
   };
+}
+
+function groupFeaturesByRef(features: CachedNationalHighwayFeature[]): CachedNationalHighwayFeature[] {
+  const groups = new Map<string, { ref: string; name?: string; highwayClass: CachedNationalHighwayFeature["highwayClass"]; lines: number[][][] }>();
+
+  for (const feature of features) {
+    const ref = normalizeHighwayRef(feature.ref);
+    const group = groups.get(ref) ?? { ref, highwayClass: feature.highwayClass, lines: [] };
+    group.name = group.name ?? feature.name;
+    group.lines.push(...geometryToLines(feature.geometry));
+    groups.set(ref, group);
+  }
+
+  return [...groups.values()].map((group) => ({
+    id: `osm-${slugHighwayRef(group.ref)}`,
+    ref: group.ref,
+    name: group.name,
+    highwayClass: group.highwayClass,
+    source: "openstreetmap",
+    isNationalHighway: true,
+    isExpressway: false,
+    geometry: group.lines.length === 1
+      ? { type: "LineString", coordinates: group.lines[0] }
+      : { type: "MultiLineString", coordinates: group.lines },
+  }));
+}
+
+function geometryToLines(geometry: CachedNationalHighwayFeature["geometry"]): number[][][] {
+  return geometry.type === "LineString" ? [geometry.coordinates as number[][]] : (geometry.coordinates as number[][][]);
+}
+
+function simplifyLine(coordinates: number[][], toleranceDegrees: number): number[][] {
+  if (toleranceDegrees <= 0 || coordinates.length <= 2) {
+    return coordinates;
+  }
+
+  const keep = new Array<boolean>(coordinates.length).fill(false);
+  keep[0] = true;
+  keep[coordinates.length - 1] = true;
+  simplifySection(coordinates, 0, coordinates.length - 1, toleranceDegrees, keep);
+
+  return coordinates.filter((_, index) => keep[index]);
+}
+
+function simplifySection(coordinates: number[][], startIndex: number, endIndex: number, toleranceDegrees: number, keep: boolean[]) {
+  let maxDistance = 0;
+  let maxDistanceIndex = startIndex;
+  const start = coordinates[startIndex];
+  const end = coordinates[endIndex];
+
+  for (let index = startIndex + 1; index < endIndex; index += 1) {
+    const distance = perpendicularDistanceDegrees(coordinates[index], start, end);
+    if (distance > maxDistance) {
+      maxDistance = distance;
+      maxDistanceIndex = index;
+    }
+  }
+
+  if (maxDistance > toleranceDegrees) {
+    keep[maxDistanceIndex] = true;
+    simplifySection(coordinates, startIndex, maxDistanceIndex, toleranceDegrees, keep);
+    simplifySection(coordinates, maxDistanceIndex, endIndex, toleranceDegrees, keep);
+  }
+}
+
+function perpendicularDistanceDegrees(point: number[], lineStart: number[], lineEnd: number[]): number {
+  const deltaLng = lineEnd[0] - lineStart[0];
+  const deltaLat = lineEnd[1] - lineStart[1];
+
+  if (deltaLng === 0 && deltaLat === 0) {
+    return Math.hypot(point[0] - lineStart[0], point[1] - lineStart[1]);
+  }
+
+  const numerator = Math.abs(deltaLat * point[0] - deltaLng * point[1] + lineEnd[0] * lineStart[1] - lineEnd[1] * lineStart[0]);
+  return numerator / Math.hypot(deltaLng, deltaLat);
 }
 
 function normalizeHighwayRef(value: string): string {
@@ -106,4 +190,12 @@ function normalizeHighwayClass(value: string | undefined): CachedNationalHighway
   }
 
   return value as CachedNationalHighwayFeature["highwayClass"];
+}
+
+function slugHighwayRef(ref: string): string {
+  return ref.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+}
+
+function roundCoordinate(value: number): number {
+  return Math.round(value * 100_000) / 100_000;
 }

@@ -53,10 +53,36 @@ export type GoogleCuratedPlaceDiscoverySummary = {
   failures: Array<{ jobId: string; message: string }>;
 };
 
+export type GoogleCuratedPlaceDiscoveryPlan = {
+  totalJobs: number;
+  plannedJobs: number;
+  plannedTextSearchRequests: number;
+  missingCorridorJobs: number;
+  maxDiversionMeters: number;
+  maxTextSearchRequests?: number;
+  textSearchCapExceeded: boolean;
+};
+
 type SearchTextPlaces = (
   job: GoogleTextSearchJob,
   options: { apiKey: string },
 ) => Promise<GoogleTextSearchResponse>;
+
+type GoogleCuratedPlaceDiscoveryPlanningInput = {
+  jobs?: GoogleTextSearchJob[];
+  corridors?: HighwaySearchCorridor[];
+  jobLimit?: number;
+  seedNames?: string[];
+  cleanlinessTiers?: CleanlinessTier[];
+  maxTextSearchRequests?: number;
+  maxDiversionMeters?: number;
+};
+
+export function planGoogleCuratedPlaceDiscovery(input: GoogleCuratedPlaceDiscoveryPlanningInput = {}): GoogleCuratedPlaceDiscoveryPlan {
+  const planning = buildGoogleCuratedPlaceDiscoveryPlanning(input);
+
+  return planning.plan;
+}
 
 export async function discoverGoogleCuratedPlaces(input: {
   apiKey: string;
@@ -70,26 +96,16 @@ export async function discoverGoogleCuratedPlaces(input: {
   searchTextPlaces?: SearchTextPlaces;
   onProgress?: (progress: { searchedJobs: number; totalJobs: number; matches: number; failures: number }) => void;
 }): Promise<GoogleCuratedPlaceDiscoverySummary> {
-  const allJobs = filterGoogleCuratedPlaceJobs(input.jobs ?? buildHighwayPlacesSearchJobs({ proxyBrands, curatedStopCandidates, corridors: highwaySearchCorridors }), {
-    seedNames: input.seedNames,
-    cleanlinessTiers: input.cleanlinessTiers,
-  });
-  const jobs = typeof input.jobLimit === "number" ? allJobs.slice(0, input.jobLimit) : allJobs;
-  const corridors = input.corridors ?? highwaySearchCorridors;
+  const { allJobs, jobs, plannedJobs, plan } = buildGoogleCuratedPlaceDiscoveryPlanning(input);
   const searchTextPlaces = input.searchTextPlaces ?? defaultSearchTextPlaces;
-  const maxDiversionMeters = input.maxDiversionMeters ?? 2_000;
+  const maxDiversionMeters = plan.maxDiversionMeters;
   const discoveredPlaces: DiscoveredHighwayPlace[] = [];
   const rejectedPlaces: RejectedDiscoveredHighwayPlace[] = [];
   const failures: Array<{ jobId: string; message: string }> = [];
-  const plannedJobs = jobs.map((job) => ({ job, corridor: findCorridorForJob(job, corridors) }));
-  const plannedTextSearchRequests = plannedJobs.filter((plannedJob) => plannedJob.corridor).length;
 
-  if (
-    typeof input.maxTextSearchRequests === "number" &&
-    plannedTextSearchRequests > input.maxTextSearchRequests
-  ) {
+  if (plan.textSearchCapExceeded) {
     throw new Error(
-      `Planned Google Places Text Search requests exceed cap: planned=${plannedTextSearchRequests} cap=${input.maxTextSearchRequests}`,
+      `Planned Google Places Text Search requests exceed cap: planned=${plan.plannedTextSearchRequests} cap=${input.maxTextSearchRequests}`,
     );
   }
 
@@ -263,6 +279,39 @@ function cleanlinessTierRank(tier: CleanlinessTier): number {
 
 function normalizeFilterValue(value: string): string {
   return value.trim().toLowerCase();
+}
+
+function buildGoogleCuratedPlaceDiscoveryPlanning(input: GoogleCuratedPlaceDiscoveryPlanningInput): {
+  allJobs: GoogleTextSearchJob[];
+  jobs: GoogleTextSearchJob[];
+  plannedJobs: Array<{ job: GoogleTextSearchJob; corridor: HighwaySearchCorridor | undefined }>;
+  plan: GoogleCuratedPlaceDiscoveryPlan;
+} {
+  const corridors = input.corridors ?? highwaySearchCorridors;
+  const allJobs = filterGoogleCuratedPlaceJobs(input.jobs ?? buildHighwayPlacesSearchJobs({ proxyBrands, curatedStopCandidates, corridors }), {
+    seedNames: input.seedNames,
+    cleanlinessTiers: input.cleanlinessTiers,
+  });
+  const jobs = typeof input.jobLimit === "number" ? allJobs.slice(0, input.jobLimit) : allJobs;
+  const plannedJobs = jobs.map((job) => ({ job, corridor: findCorridorForJob(job, corridors) }));
+  const plannedTextSearchRequests = plannedJobs.filter((plannedJob) => plannedJob.corridor).length;
+  const missingCorridorJobs = plannedJobs.length - plannedTextSearchRequests;
+  const maxDiversionMeters = input.maxDiversionMeters ?? 2_000;
+
+  return {
+    allJobs,
+    jobs,
+    plannedJobs,
+    plan: {
+      totalJobs: allJobs.length,
+      plannedJobs: jobs.length,
+      plannedTextSearchRequests,
+      missingCorridorJobs,
+      maxDiversionMeters,
+      maxTextSearchRequests: input.maxTextSearchRequests,
+      textSearchCapExceeded: typeof input.maxTextSearchRequests === "number" && plannedTextSearchRequests > input.maxTextSearchRequests,
+    },
+  };
 }
 
 function rejectionNoteForReason(reason: RejectedDiscoveredHighwayPlace["rejectionReason"]): string {

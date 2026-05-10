@@ -5,6 +5,7 @@ import {
   discoverGoogleCuratedPlaces,
   filterAcceptedGoogleCuratedPlaceRowsForUpsert,
   filterGoogleCuratedPlaceJobs,
+  planGoogleCuratedPlaceDiscovery,
   toGoogleCuratedPlaceRows,
   toRejectedGoogleCuratedPlaceRows,
 } from "./google-curated-place-import";
@@ -42,6 +43,25 @@ function job(overrides: Partial<GoogleTextSearchJob>): GoogleTextSearchJob {
 }
 
 describe("discoverGoogleCuratedPlaces", () => {
+  it("plans a strict-distance import without executing Google searches", () => {
+    const plan = planGoogleCuratedPlaceDiscovery({
+      corridors: [corridor],
+      jobs: [job({ id: "near" }), job({ id: "missing-corridor", expectedRouteContext: "Missing route" })],
+      maxDiversionMeters: 750,
+      maxTextSearchRequests: 1,
+    });
+
+    expect(plan).toEqual({
+      totalJobs: 2,
+      plannedJobs: 2,
+      plannedTextSearchRequests: 1,
+      missingCorridorJobs: 1,
+      maxDiversionMeters: 750,
+      maxTextSearchRequests: 1,
+      textSearchCapExceeded: false,
+    });
+  });
+
   it("filters Google results to the highway corridor and dedupes by place_id", async () => {
     const result = await discoverGoogleCuratedPlaces({
       apiKey: "server-key",

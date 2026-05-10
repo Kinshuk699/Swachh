@@ -49,6 +49,45 @@ describe("OSM Overpass National Highway import helpers", () => {
     });
   });
 
+  it("can group National Highway ways by ref and simplify geometry for the browser cache", () => {
+    const features = overpassJsonToCachedHighways(
+      {
+        elements: [
+          {
+            type: "way",
+            id: 1001,
+            tags: { ref: "NH 44", name: "National Highway 44", highway: "trunk" },
+            geometry: [
+              { lat: 0, lon: 0 },
+              { lat: 0.0001, lon: 0.1 },
+              { lat: 0, lon: 0.2 },
+            ],
+          },
+          {
+            type: "way",
+            id: 1002,
+            tags: { ref: "NH-44", highway: "trunk" },
+            geometry: [
+              { lat: 0, lon: 0.3 },
+              { lat: 0, lon: 0.4 },
+            ],
+          },
+        ],
+      },
+      { groupByRef: true, simplifyToleranceDegrees: 0.001 },
+    );
+
+    expect(features).toHaveLength(1);
+    expect(features[0]).toMatchObject({ id: "osm-nh-44", ref: "NH-44", name: "National Highway 44" });
+    expect(features[0].geometry).toEqual({
+      type: "MultiLineString",
+      coordinates: [
+        [[0, 0], [0.2, 0]],
+        [[0.3, 0], [0.4, 0]],
+      ],
+    });
+  });
+
   it("formats generated cached data as a TypeScript module", () => {
     const moduleText = formatNationalHighwayDatasetModule({
       generatedAt: "2026-05-11T00:00:00.000Z",
@@ -68,6 +107,6 @@ describe("OSM Overpass National Highway import helpers", () => {
 
     expect(moduleText).toContain("export const nationalHighwayDataset");
     expect(moduleText).toContain("© OpenStreetMap contributors");
-    expect(moduleText).toContain('ref: "NH-44"');
+    expect(moduleText).toContain('"ref":"NH-44"');
   });
 });

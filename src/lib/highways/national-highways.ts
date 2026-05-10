@@ -1,4 +1,4 @@
-import { nationalHighwayDataset, type CachedHighwayGeometry, type CachedNationalHighwayFeature } from "@/data/highways/india-national-highways";
+import { nationalHighwayDataset, type CachedHighwayGeometry, type CachedNationalHighwayFeature } from "../../data/highways/india-national-highways.ts";
 
 export type HighwayBounds = { north: number; south: number; east: number; west: number };
 
