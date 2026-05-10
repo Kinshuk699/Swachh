@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "import:google-curated-places": "node --experimental-transform-types scripts/import-google-curated-places.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "latest",

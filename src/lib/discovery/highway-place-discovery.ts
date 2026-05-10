@@ -1,4 +1,4 @@
-import { toStoredGooglePlaceReference, type StoredGooglePlaceReference } from "@/lib/google/place-policy";
+import { toStoredGooglePlaceReference, type StoredGooglePlaceReference } from "../google/place-policy.ts";
 
 export const googleTextSearchFieldMask = "places.id,places.name,places.location,places.displayName,places.types";
 
