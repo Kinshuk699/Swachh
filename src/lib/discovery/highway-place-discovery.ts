@@ -117,16 +117,14 @@ export type DiscoveredHighwayPlace = {
 
 const weakPlaceNameTokens = new Set(["and", "the", "fuel", "cafe", "restaurant", "hotel", "highway", "official", "service"]);
 const significantShortPlaceNameTokens = new Set(["bp", "hp"]);
-const relevantPlaceTypesByProxyType: Record<ProxyType, Set<string>> = {
-  premium_lavatory: new Set(["public_bathroom", "public_bath", "rest_stop", "gas_station", "restaurant", "cafe"]),
-  wayside_amenity: new Set(["rest_stop", "gas_station", "restaurant", "cafe", "convenience_store", "public_bathroom", "public_bath", "lodging"]),
-  fuel_cafe: new Set(["gas_station", "electric_vehicle_charging_station", "convenience_store", "cafe", "restaurant"]),
-  fuel_station: new Set(["gas_station", "electric_vehicle_charging_station", "convenience_store"]),
-  food_plaza: new Set(["restaurant", "cafe", "fast_food_restaurant", "food", "meal_takeaway", "bakery"]),
-  restaurant_proxy: new Set(["restaurant", "cafe", "fast_food_restaurant", "food", "meal_takeaway", "bakery"]),
-  qsr: new Set(["restaurant", "cafe", "fast_food_restaurant", "food", "meal_takeaway", "bakery"]),
-  dhaba_proxy: new Set(["restaurant", "cafe", "food", "meal_takeaway"]),
-};
+const broadRecallSeedKeys = new Set(["lavato", "pathrecharge"]);
+const brandSeedAliases = new Map<string, string[]>([
+  ["bpclghar", ["bpcl", "bharatpetrol", "bharatpetroleum"]],
+  ["indianoilcoco", ["indianoil", "iocl"]],
+  ["indianoilswagat", ["indianoil", "iocl"]],
+  ["jiobp", ["jiobp"]],
+  ["wildbeancafe", ["wildbean"]],
+]);
 
 export function buildHighwayPlacesSearchJobs(input: {
   proxyBrands: HygieneProxyBrand[];
@@ -362,22 +360,40 @@ export function isRelevantGooglePlaceNameMatch(seedName: string, placeName: stri
 
   const normalizedPlaceName = normalizeForPlaceMatch(placeName);
   const normalizedSeedName = normalizeForPlaceMatch(seedName);
+  const placeTokens = tokenizeForPlaceMatch(placeName);
 
   if (!normalizedPlaceName || !normalizedSeedName) {
     return false;
+  }
+
+  if (normalizedSeedName.startsWith("cubestop")) {
+    return placeTokens[0] === "cube" && placeTokens[1] === "stop";
+  }
+
+  if (normalizedSeedName.startsWith("shell")) {
+    return placeTokens[0] === "shell";
+  }
+
+  if (broadRecallSeedKeys.has(normalizedSeedName)) {
+    return true;
   }
 
   if (normalizedPlaceName.includes(normalizedSeedName)) {
     return true;
   }
 
+  const aliases = brandSeedAliases.get(normalizedSeedName) ?? [];
+  if (aliases.some((alias) => normalizedPlaceName.includes(alias))) {
+    return true;
+  }
+
   const tokens = tokenizeForPlaceMatch(seedName)
     .filter((token) => (token.length >= 3 || significantShortPlaceNameTokens.has(token)) && !weakPlaceNameTokens.has(token));
-  const placeTokens = new Set(tokenizeForPlaceMatch(placeName));
+  const placeTokenSet = new Set(placeTokens);
 
   return (
     tokens.length > 0 &&
-    tokens.every((token) => (significantShortPlaceNameTokens.has(token) ? placeTokens.has(token) : normalizedPlaceName.includes(token)))
+    tokens.every((token) => (significantShortPlaceNameTokens.has(token) ? placeTokenSet.has(token) : normalizedPlaceName.includes(token)))
   );
 }
 
@@ -387,17 +403,7 @@ export function isRelevantGooglePlaceCandidate(input: {
   placeName: string | undefined;
   types: string[] | undefined;
 }): boolean {
-  return isRelevantGooglePlaceNameMatch(input.seedName, input.placeName) && hasRelevantGooglePlaceType(input.proxyType, input.types);
-}
-
-function hasRelevantGooglePlaceType(proxyType: ProxyType, types: string[] | undefined): boolean {
-  if (!types?.length) {
-    return false;
-  }
-
-  const relevantTypes = relevantPlaceTypesByProxyType[proxyType];
-
-  return types.some((type) => relevantTypes.has(type));
+  return isRelevantGooglePlaceNameMatch(input.seedName, input.placeName);
 }
 
 function normalizeForPlaceMatch(input: string): string {

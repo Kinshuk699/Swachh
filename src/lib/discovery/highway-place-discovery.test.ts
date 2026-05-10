@@ -202,7 +202,7 @@ describe("filterHighwayPlaceMatches", () => {
 });
 
 describe("isRelevantGooglePlaceCandidate", () => {
-  it("does not let broad brand names inherit quality-program labels", () => {
+  it("keeps trusted seed families broad enough for manual review", () => {
     expect(
       isRelevantGooglePlaceCandidate({
         seedName: "Indian Oil Swagat",
@@ -210,7 +210,7 @@ describe("isRelevantGooglePlaceCandidate", () => {
         placeName: "IndianOil",
         types: ["gas_station"],
       }),
-    ).toBe(false);
+    ).toBe(true);
 
     expect(
       isRelevantGooglePlaceCandidate({
@@ -220,9 +220,72 @@ describe("isRelevantGooglePlaceCandidate", () => {
         types: ["gas_station"],
       }),
     ).toBe(true);
+
+    expect(
+      isRelevantGooglePlaceCandidate({
+        seedName: "Indian Oil COCO",
+        proxyType: "fuel_station",
+        placeName: "Indian Oil Petrol Pump",
+        types: ["gas_station"],
+      }),
+    ).toBe(true);
+
+    expect(
+      isRelevantGooglePlaceCandidate({
+        seedName: "PATH Recharge",
+        proxyType: "wayside_amenity",
+        placeName: "Wankhar Entomology Museum",
+        types: ["museum"],
+      }),
+    ).toBe(true);
+
+    expect(
+      isRelevantGooglePlaceCandidate({
+        seedName: "Lavato",
+        proxyType: "premium_lavatory",
+        placeName: "National Highway 19",
+        types: ["route"],
+      }),
+    ).toBe(true);
+
+    expect(
+      isRelevantGooglePlaceCandidate({
+        seedName: "BPCL Ghar",
+        proxyType: "wayside_amenity",
+        placeName: "Bharat Petrol Pump",
+        types: ["gas_station"],
+      }),
+    ).toBe(true);
+
+    expect(
+      isRelevantGooglePlaceCandidate({
+        seedName: "BPCL Ghar",
+        proxyType: "wayside_amenity",
+        placeName: "Bharat Petroleum COCO Outlet Krishnagiri",
+        types: ["gas_station"],
+      }),
+    ).toBe(true);
+
+    expect(
+      isRelevantGooglePlaceCandidate({
+        seedName: "BPCL Ghar",
+        proxyType: "wayside_amenity",
+        placeName: "Govindpur Block Office",
+        types: ["government_office"],
+      }),
+    ).toBe(false);
+
+    expect(
+      isRelevantGooglePlaceCandidate({
+        seedName: "BPCL Ghar",
+        proxyType: "wayside_amenity",
+        placeName: "Ghar",
+        types: ["gas_station"],
+      }),
+    ).toBe(false);
   });
 
-  it("rejects matching names with unrelated Google place types", () => {
+  it("uses first-word Shell matching instead of rejecting Shell outlet variants", () => {
     expect(
       isRelevantGooglePlaceCandidate({
         seedName: "Shell Select",
@@ -230,7 +293,7 @@ describe("isRelevantGooglePlaceCandidate", () => {
         placeName: "Shell Select Digital Marketing",
         types: ["marketing_agency"],
       }),
-    ).toBe(false);
+    ).toBe(true);
 
     expect(
       isRelevantGooglePlaceCandidate({
@@ -245,8 +308,100 @@ describe("isRelevantGooglePlaceCandidate", () => {
       isRelevantGooglePlaceCandidate({
         seedName: "Shell Select",
         proxyType: "fuel_cafe",
+        placeName: "Shell Petrol Pump",
+        types: ["gas_station", "convenience_store"],
+      }),
+    ).toBe(true);
+
+    expect(
+      isRelevantGooglePlaceCandidate({
+        seedName: "Shell Select",
+        proxyType: "fuel_cafe",
+        placeName: "Shell Helix Car Care",
+        types: ["car_repair"],
+      }),
+    ).toBe(true);
+
+    expect(
+      isRelevantGooglePlaceCandidate({
+        seedName: "Shell Select",
+        proxyType: "fuel_cafe",
+        placeName: "Sea Shell Restaurant",
+        types: ["restaurant"],
+      }),
+    ).toBe(false);
+
+    expect(
+      isRelevantGooglePlaceCandidate({
+        seedName: "Shell Cafe",
+        proxyType: "fuel_cafe",
+        placeName: "Shell Cafe",
+        types: ["cafe"],
+      }),
+    ).toBe(true);
+
+    expect(
+      isRelevantGooglePlaceCandidate({
+        seedName: "Shell Cafe",
+        proxyType: "fuel_cafe",
+        placeName: "Shell Deli2go",
+        types: ["cafe"],
+      }),
+    ).toBe(true);
+
+    expect(
+      isRelevantGooglePlaceCandidate({
+        seedName: "Shell Select",
+        proxyType: "fuel_cafe",
         placeName: "Shell Select Fashion Store",
         types: ["store"],
+      }),
+    ).toBe(true);
+
+    expect(
+      isRelevantGooglePlaceCandidate({
+        seedName: "Shell Cafe",
+        proxyType: "fuel_cafe",
+        placeName: "Chill Cafe",
+        types: ["cafe"],
+      }),
+    ).toBe(false);
+  });
+
+  it("keeps only Cube Stop style matches for Cube seeds", () => {
+    expect(
+      isRelevantGooglePlaceCandidate({
+        seedName: "Cube Stop",
+        proxyType: "wayside_amenity",
+        placeName: "Cube Stop Washroom",
+        types: ["rest_stop"],
+      }),
+    ).toBe(true);
+
+    expect(
+      isRelevantGooglePlaceCandidate({
+        seedName: "Cube Stop",
+        proxyType: "wayside_amenity",
+        placeName: "M Cube Practical Classes",
+        types: ["school"],
+      }),
+    ).toBe(false);
+
+    expect(
+      isRelevantGooglePlaceCandidate({
+        seedName: "Cube Stop",
+        proxyType: "wayside_amenity",
+        placeName: "Icecube Digital",
+        types: ["service"],
+      }),
+    ).toBe(false);
+
+    expect(
+      isRelevantGooglePlaceCandidate({
+        seedName: "Cube Stop",
+        proxyType: "wayside_amenity",
+        placeName: "Cube Digital",
+        types: ["service"],
       }),
     ).toBe(false);
   });
@@ -257,6 +412,15 @@ describe("isRelevantGooglePlaceCandidate", () => {
         seedName: "Jio-bp",
         proxyType: "fuel_cafe",
         placeName: "My Jio Store",
+        types: ["store"],
+      }),
+    ).toBe(false);
+
+    expect(
+      isRelevantGooglePlaceCandidate({
+        seedName: "Jio-bp",
+        proxyType: "fuel_cafe",
+        placeName: "Jio",
         types: ["store"],
       }),
     ).toBe(false);
@@ -285,6 +449,24 @@ describe("isRelevantGooglePlaceCandidate", () => {
         proxyType: "fuel_station",
         placeName: "Club HP Fuel Station",
         types: ["gas_station"],
+      }),
+    ).toBe(true);
+
+    expect(
+      isRelevantGooglePlaceCandidate({
+        seedName: "Wild Bean Cafe",
+        proxyType: "fuel_cafe",
+        placeName: "Busy Beans",
+        types: ["cafe"],
+      }),
+    ).toBe(false);
+
+    expect(
+      isRelevantGooglePlaceCandidate({
+        seedName: "Wild Bean Cafe",
+        proxyType: "fuel_cafe",
+        placeName: "Wildbean cafe",
+        types: ["cafe"],
       }),
     ).toBe(true);
   });

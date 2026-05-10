@@ -173,18 +173,18 @@ describe("GET /api/google-curated-places", () => {
     limitSpy.mockResolvedValue({
       data: [
         {
-          google_place_id: "bad-store-place-id",
-          seed_name: "Shell Select",
+          google_place_id: "bad-cube-place-id",
+          seed_name: "Cube Stop",
           region: "West India",
-          proxy_type: "fuel_cafe",
-          cleanliness_tier: "tier_2",
-          source_category: "premium_fuel_program",
-          source_evidence: "Fuel cafe proxy",
+          proxy_type: "wayside_amenity",
+          cleanliness_tier: "tier_1",
+          source_category: "official_wayside_amenity",
+          source_evidence: "Cube Highways amenity with dedicated Wash Stop",
           highway_name: "NH-47",
           route_context: "Rajkot-Ahmedabad",
-          restroom_confidence: 0.78,
+          restroom_confidence: 0.9,
           distance_from_highway_meters: 140,
-          local_notes: "Fuel cafe proxy",
+          local_notes: "Cube Highways amenity with dedicated Wash Stop",
           verification_status: "likely_clean",
         },
         {
@@ -225,11 +225,11 @@ describe("GET /api/google-curated-places", () => {
       vi.fn(async (input: string | URL | Request) => {
         const url = String(input);
         const fixtures: Record<string, unknown> = {
-          "bad-store-place-id": {
-            id: "bad-store-place-id",
-            displayName: { text: "Shell Select Fashion Store" },
+          "bad-cube-place-id": {
+            id: "bad-cube-place-id",
+            displayName: { text: "M Cube Practical Classes" },
             location: { latitude: 22.99, longitude: 72.38 },
-            types: ["store"],
+            types: ["school"],
           },
           "good-lavato-place-id": {
             id: "good-lavato-place-id",
@@ -246,7 +246,7 @@ describe("GET /api/google-curated-places", () => {
         };
         const placeId = Object.keys(fixtures).find((id) => url.includes(id));
 
-        return new Response(JSON.stringify(fixtures[placeId ?? "bad-store-place-id"]), { status: 200 });
+        return new Response(JSON.stringify(fixtures[placeId ?? "bad-cube-place-id"]), { status: 200 });
       }),
     );
     const { GET } = await import("./route");
