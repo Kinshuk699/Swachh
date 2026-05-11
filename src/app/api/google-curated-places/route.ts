@@ -1,7 +1,13 @@
 import { createClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 
-import { isRelevantGooglePlaceCandidate, type CleanlinessTier, type ProxyType, type SourceCategory } from "@/lib/discovery/highway-place-discovery";
+import {
+  defaultMaxHighwayDiversionMeters,
+  isRelevantGooglePlaceCandidate,
+  type CleanlinessTier,
+  type ProxyType,
+  type SourceCategory,
+} from "@/lib/discovery/highway-place-discovery";
 import { getPlaceDetails, type GooglePlaceDetails } from "@/lib/google/places";
 import { cleanToiletDisplayLabel } from "@/lib/restrooms/clean-toilet-labels";
 import type { HighwayStop } from "@/lib/restrooms/sample-stops";
@@ -84,6 +90,7 @@ export async function GET(request: Request) {
     .from("google_curated_places")
     .select(googleCuratedPlaceColumns)
     .in("verification_status", visibilityStatuses)
+    .lte("distance_from_highway_meters", defaultMaxHighwayDiversionMeters)
     .order("cleanliness_tier", { ascending: true })
     .order("restroom_confidence", { ascending: false })
     .limit(storedRowLimit);

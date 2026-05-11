@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import {
   buildHighwayPlacesSearchJobs,
+  defaultMaxHighwayDiversionMeters,
   dedupeDiscoveredHighwayPlaces,
   filterHighwayPlaceMatches,
   type DiscoveredHighwayPlace,
@@ -58,7 +59,12 @@ export async function GET(request: Request) {
 
     try {
       const response = await searchTextPlaces(job, { apiKey });
-      const matches = filterHighwayPlaceMatches({ job, corridor, places: response.places, maxDiversionMeters: 2_000 });
+      const matches = filterHighwayPlaceMatches({
+        job,
+        corridor,
+        places: response.places,
+        maxDiversionMeters: defaultMaxHighwayDiversionMeters,
+      });
 
       for (const place of response.places) {
         if (place.id) {

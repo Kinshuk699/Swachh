@@ -12,7 +12,11 @@ import {
   type ExistingGoogleCuratedPlaceRow,
 } from "../src/lib/discovery/google-curated-place-import.ts";
 import { getCachedNationalHighwayOverlays } from "../src/lib/highways/national-highways.ts";
-import type { CleanlinessTier, HighwaySearchCorridor } from "../src/lib/discovery/highway-place-discovery.ts";
+import {
+  defaultMaxHighwayDiversionMeters,
+  type CleanlinessTier,
+  type HighwaySearchCorridor,
+} from "../src/lib/discovery/highway-place-discovery.ts";
 
 type ImportArgs = {
   dryRun: boolean;
@@ -91,7 +95,7 @@ console.log(
       dryRun: args.dryRun,
       corridorSource: args.corridorSource,
       maxTextSearchRequests,
-      maxDiversionMeters: args.maxDiversionMeters ?? 2_000,
+      maxDiversionMeters: args.maxDiversionMeters ?? defaultMaxHighwayDiversionMeters,
       totalJobs: discovery.totalJobs,
       searchedJobs: discovery.searchedJobs,
       missingCorridorJobs: discovery.missingCorridorJobs,

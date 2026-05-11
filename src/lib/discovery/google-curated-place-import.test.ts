@@ -43,6 +43,15 @@ function job(overrides: Partial<GoogleTextSearchJob>): GoogleTextSearchJob {
 }
 
 describe("discoverGoogleCuratedPlaces", () => {
+  it("defaults planned imports to a 1 km highway diversion window", () => {
+    const plan = planGoogleCuratedPlaceDiscovery({
+      corridors: [corridor],
+      jobs: [job({ id: "near" })],
+    });
+
+    expect(plan.maxDiversionMeters).toBe(1_000);
+  });
+
   it("plans a strict-distance import without executing Google searches", () => {
     const plan = planGoogleCuratedPlaceDiscovery({
       corridors: [corridor],

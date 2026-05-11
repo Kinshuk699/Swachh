@@ -8,6 +8,7 @@ import {
   toRejectedGoogleCuratedPlaceReviewRow,
   type RejectedGoogleCuratedPlaceRecord,
 } from "../src/lib/discovery/google-curated-place-review-export.ts";
+import { defaultMaxHighwayDiversionMeters } from "../src/lib/discovery/highway-place-discovery.ts";
 import { getPlaceDetails } from "../src/lib/google/places.ts";
 
 type ExportArgs = {
@@ -31,6 +32,7 @@ const { data, error } = await supabase
     "id,google_place_id,seed_name,region,proxy_type,cleanliness_tier,source_category,source_evidence,highway_name,route_context,restroom_confidence,distance_from_highway_meters,local_notes,matched_at,updated_at",
   )
   .eq("verification_status", "rejected")
+  .lte("distance_from_highway_meters", defaultMaxHighwayDiversionMeters)
   .order("cleanliness_tier", { ascending: true })
   .order("seed_name", { ascending: true })
   .order("distance_from_highway_meters", { ascending: true });

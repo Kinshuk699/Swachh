@@ -1,5 +1,6 @@
 import {
   buildHighwayPlacesSearchJobs,
+  defaultMaxHighwayDiversionMeters,
   dedupeDiscoveredHighwayPlaces,
   getPlaceCleanToiletClassification,
   partitionHighwayPlaceMatches,
@@ -296,7 +297,7 @@ function buildGoogleCuratedPlaceDiscoveryPlanning(input: GoogleCuratedPlaceDisco
   const plannedJobs = jobs.map((job) => ({ job, corridor: findCorridorForJob(job, corridors) }));
   const plannedTextSearchRequests = plannedJobs.filter((plannedJob) => plannedJob.corridor).length;
   const missingCorridorJobs = plannedJobs.length - plannedTextSearchRequests;
-  const maxDiversionMeters = input.maxDiversionMeters ?? 2_000;
+  const maxDiversionMeters = input.maxDiversionMeters ?? defaultMaxHighwayDiversionMeters;
 
   return {
     allJobs,
