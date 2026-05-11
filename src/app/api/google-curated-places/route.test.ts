@@ -27,7 +27,7 @@ describe("GET /api/google-curated-places", () => {
     process.env.GOOGLE_MAPS_SERVER_API_KEY = originalServerKey;
   });
 
-  it("returns stored Google place IDs as map stops using user-facing cleanliness labels", async () => {
+  it("returns stored Google candidates without Google Details calls by default", async () => {
     process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
     process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role-key";
     process.env.GOOGLE_MAPS_SERVER_API_KEY = "server-key";
@@ -51,28 +51,7 @@ describe("GET /api/google-curated-places", () => {
       ],
       error: null,
     });
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (input: string | URL | Request) => {
-        expect(String(input)).toContain("/places/google-place-id");
-        expect(String(input)).not.toContain("places:searchText");
-
-        return new Response(
-          JSON.stringify({
-            id: "google-place-id",
-            displayName: { text: "LAVATO - A Premium Lounge" },
-            location: { latitude: 12.5732978, longitude: 78.1692122 },
-            types: ["public_bathroom"],
-            googleMapsUri: "https://maps.google.com/?cid=123",
-            currentOpeningHours: {
-              openNow: true,
-              weekdayDescriptions: ["Monday: 8:00 AM - 10:00 PM"],
-            },
-          }),
-          { status: 200 },
-        );
-      }),
-    );
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(null, { status: 500 })));
     const { GET } = await import("./route");
 
     const response = await GET(new Request("http://localhost/api/google-curated-places?limit=1"));
@@ -81,20 +60,20 @@ describe("GET /api/google-curated-places", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("Cache-Control")).toBe("public, s-maxage=3600, stale-while-revalidate=86400");
     expect(body.textSearchRequests).toBe(0);
-    expect(body.placeDetailsRequests).toBe(1);
-    expect(body.places[0]).toMatchObject({
+    expect(body.placeDetailsRequests).toBe(0);
+    expect(body.places).toEqual([]);
+    expect(body.candidates[0]).toMatchObject({
       id: "google-google-place-id",
-      name: "LAVATO - A Premium Lounge",
+      name: "Lavato",
       placeId: "google-place-id",
       cleanlinessLabel: "Premium restroom",
       sourceLabel: "Premium restroom",
       highway: "NH-44",
       locality: "Krishnagiri toll plaza",
-      lat: 12.5732978,
-      lng: 78.1692122,
       isPaidPremium: true,
     });
-    expect(JSON.stringify(body.places[0])).not.toContain("tier_1");
+    expect(fetch).not.toHaveBeenCalled();
+    expect(JSON.stringify(body.candidates[0])).not.toContain("tier_1");
     expect(fromSpy).toHaveBeenCalledWith("google_curated_places");
     expect(inSpy).toHaveBeenCalledWith("verification_status", ["likely_clean", "verified_clean", "approved"]);
     expect(lteSpy).toHaveBeenCalledWith("distance_from_highway_meters", 2_000);
@@ -103,7 +82,7 @@ describe("GET /api/google-curated-places", () => {
     expect(limitSpy).toHaveBeenCalledWith(5);
   });
 
-  it("supports all_found visibility for mapped Tier 1, Tier 2, and Tier 3 rows without rejected or Tier 4 rows", async () => {
+  it("supports all_found visibility for stored Tier 1, Tier 2, and Tier 3 candidates without rejected or Tier 4 rows", async () => {
     process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
     process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role-key";
     process.env.GOOGLE_MAPS_SERVER_API_KEY = "server-key";
@@ -142,22 +121,7 @@ describe("GET /api/google-curated-places", () => {
       ],
       error: null,
     });
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (input: string | URL | Request) => {
-        const url = String(input);
-        return new Response(
-          JSON.stringify({
-            id: url.includes("tier-four-dhaba-id") ? "tier-four-dhaba-id" : "tier-three-food-plaza-id",
-            displayName: { text: url.includes("tier-four-dhaba-id") ? "Local Dhaba" : "Village Food Courts" },
-            location: { latitude: 13.65, longitude: 77.6 },
-            types: ["restaurant", "food"],
-            googleMapsUri: "https://maps.google.com/?cid=456",
-          }),
-          { status: 200 },
-        );
-      }),
-    );
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(null, { status: 500 })));
     const { GET } = await import("./route");
 
     const response = await GET(new Request("http://localhost/api/google-curated-places?visibility=all_found&limit=500"));
@@ -166,8 +130,10 @@ describe("GET /api/google-curated-places", () => {
     expect(response.status).toBe(200);
     expect(body.visibility).toBe("all_found");
     expect(body.textSearchRequests).toBe(0);
-    expect(body.places).toHaveLength(1);
-    expect(body.places[0]).toMatchObject({
+    expect(body.placeDetailsRequests).toBe(0);
+    expect(body.places).toEqual([]);
+    expect(body.candidates).toHaveLength(1);
+    expect(body.candidates[0]).toMatchObject({
       placeId: "tier-three-food-plaza-id",
       highway: "NH-44",
       locality: "Bengaluru-Hyderabad",
@@ -177,7 +143,7 @@ describe("GET /api/google-curated-places", () => {
     expect(inSpy).toHaveBeenCalledWith("verification_status", ["likely_clean", "matched", "verified_clean", "approved"]);
     expect(lteSpy).toHaveBeenCalledWith("distance_from_highway_meters", 2_000);
     expect(limitSpy).toHaveBeenCalledWith(2000);
-    expect(fetch).not.toHaveBeenCalledWith(expect.stringContaining("tier-four-dhaba-id"), expect.anything());
+    expect(fetch).not.toHaveBeenCalled();
   });
 
   it("skips stored candidates when Google Details resolves to a mismatched place name", async () => {
@@ -237,7 +203,7 @@ describe("GET /api/google-curated-places", () => {
     );
     const { GET } = await import("./route");
 
-    const response = await GET(new Request("http://localhost/api/google-curated-places?limit=2"));
+    const response = await GET(new Request("http://localhost/api/google-curated-places?limit=2&details=google"));
     const body = await response.json();
 
     expect(response.status).toBe(200);
@@ -331,7 +297,7 @@ describe("GET /api/google-curated-places", () => {
     );
     const { GET } = await import("./route");
 
-    const response = await GET(new Request("http://localhost/api/google-curated-places?limit=2"));
+    const response = await GET(new Request("http://localhost/api/google-curated-places?limit=2&details=google"));
     const body = await response.json();
 
     expect(response.status).toBe(200);

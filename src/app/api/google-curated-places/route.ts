@@ -25,6 +25,7 @@ const allFoundMapTiers = ["tier_1", "tier_2", "tier_3"] as const satisfies Clean
 const allFoundMapTierSet = new Set<CleanlinessTier>(allFoundMapTiers);
 type CuratedMapVisibility = "public" | "all_found";
 type GoogleCuratedPlaceVerificationStatus = (typeof allFoundMapStatuses)[number];
+type CuratedMapDetailsMode = "stored" | "google";
 
 const placeDetailsCache = new Map<string, { expiresAt: number; details: GooglePlaceDetails }>();
 
@@ -60,16 +61,40 @@ type GoogleCuratedPlaceRow = {
   verification_status: GoogleCuratedPlaceVerificationStatus;
 };
 
+type GoogleCuratedPlaceCandidate = {
+  id: string;
+  name: string;
+  category: HighwayStop["category"];
+  distanceFromRouteMeters: number;
+  distanceFromHighwayMeters: number;
+  detourMinutes: number;
+  source: "google_place";
+  confidence: number;
+  verified: boolean;
+  highway: string;
+  locality: string;
+  priceLabel: HighwayStop["priceLabel"];
+  facilities: string[];
+  placeId: string;
+  isPaidPremium: boolean;
+  cleanlinessLabel: string;
+  sourceLabel: string;
+  cleanlinessTier?: CleanlinessTier;
+  verificationStatus?: GoogleCuratedPlaceVerificationStatus;
+};
+
 export async function GET(request: Request) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   const apiKey = process.env.GOOGLE_MAPS_SERVER_API_KEY;
+  const detailsMode = getRequestedDetailsMode(request);
 
-  if (!supabaseUrl || !serviceRoleKey || !apiKey) {
+  if (!supabaseUrl || !serviceRoleKey || (detailsMode === "google" && !apiKey)) {
     return NextResponse.json(
       {
         error: "Stored Google curated places are not configured.",
         places: [],
+        candidates: [],
         storedRowsRead: 0,
         placeDetailsRequests: 0,
         textSearchRequests: 0,
@@ -100,6 +125,7 @@ export async function GET(request: Request) {
       {
         error: "Stored Google curated places could not be loaded.",
         places: [],
+        candidates: [],
         storedRowsRead: 0,
         placeDetailsRequests: 0,
         textSearchRequests: 0,
@@ -112,6 +138,24 @@ export async function GET(request: Request) {
   const storedRows = (data ?? []) as unknown as GoogleCuratedPlaceRow[];
   const rows = rowsForVisibility(storedRows, visibility);
   const diversifiedRows = diversifyStoredRows(rows);
+  const candidates = diversifiedRows.slice(0, limit).map((row) => toGooglePlaceCandidate(row, visibility));
+
+  if (detailsMode === "stored") {
+    return NextResponse.json(
+      {
+        visibility,
+        detailsMode,
+        places: [],
+        candidates,
+        storedRowsRead: rows.length,
+        placeDetailsRequests: 0,
+        textSearchRequests: 0,
+        capped: storedRows.length === storedRowLimit || candidates.length < diversifiedRows.length,
+      },
+      { headers: { "Cache-Control": MAP_RESPONSE_CACHE_CONTROL } },
+    );
+  }
+
   const maxPlaceDetailsRequests = Math.min(diversifiedRows.length, limit * 2);
   const places: HighwayStop[] = [];
   let placeDetailsRequests = 0;
@@ -124,7 +168,7 @@ export async function GET(request: Request) {
     placeDetailsRequests += 1;
 
     try {
-      const details = await getCachedPlaceDetails(row.google_place_id, apiKey);
+      const details = await getCachedPlaceDetails(row.google_place_id, apiKey!);
       if (!isRelevantGooglePlaceMatch(row, details)) {
         continue;
       }
@@ -144,7 +188,9 @@ export async function GET(request: Request) {
   return NextResponse.json(
     {
       visibility,
+      detailsMode,
       places,
+      candidates,
       storedRowsRead: rows.length,
       placeDetailsRequests,
       textSearchRequests: 0,
@@ -185,6 +231,10 @@ function getStoredRowLimit(limit: number, visibility: CuratedMapVisibility): num
 
 function getRequestedVisibility(request: Request): CuratedMapVisibility {
   return new URL(request.url).searchParams.get("visibility") === "all_found" ? "all_found" : "public";
+}
+
+function getRequestedDetailsMode(request: Request): CuratedMapDetailsMode {
+  return new URL(request.url).searchParams.get("details") === "google" ? "google" : "stored";
 }
 
 function statusesForVisibility(visibility: CuratedMapVisibility): GoogleCuratedPlaceVerificationStatus[] {
@@ -232,6 +282,39 @@ function toHighwayStop(row: GoogleCuratedPlaceRow, details: GooglePlaceDetails, 
     googleMapsUri: details.googleMapsUri,
     googlePlaceName: details.displayName,
     openingHoursText: details.weekdayDescriptions,
+    isPaidPremium: row.proxy_type === "premium_lavatory",
+    cleanlinessLabel,
+    sourceLabel: cleanlinessLabel,
+    ...(visibility === "all_found"
+      ? {
+          cleanlinessTier: row.cleanliness_tier,
+          verificationStatus: row.verification_status,
+        }
+      : {}),
+  };
+}
+
+function toGooglePlaceCandidate(row: GoogleCuratedPlaceRow, visibility: CuratedMapVisibility): GoogleCuratedPlaceCandidate {
+  const cleanlinessLabel = cleanToiletDisplayLabel({
+    cleanlinessTier: row.cleanliness_tier,
+    sourceCategory: row.source_category,
+  });
+
+  return {
+    id: `google-${row.google_place_id}`,
+    name: row.seed_name,
+    category: toStopCategory(row.proxy_type),
+    distanceFromRouteMeters: row.distance_from_highway_meters,
+    distanceFromHighwayMeters: row.distance_from_highway_meters,
+    detourMinutes: Math.max(1, Math.round(row.distance_from_highway_meters / 500)),
+    source: "google_place",
+    confidence: row.restroom_confidence,
+    verified: row.verification_status === "verified_clean" || row.verification_status === "approved",
+    highway: row.highway_name,
+    locality: row.route_context ?? row.region,
+    priceLabel: row.proxy_type === "premium_lavatory" ? "Paid" : "Customer access",
+    facilities: [cleanlinessLabel, "Highway-filtered", row.route_context ?? row.region],
+    placeId: row.google_place_id,
     isPaidPremium: row.proxy_type === "premium_lavatory",
     cleanlinessLabel,
     sourceLabel: cleanlinessLabel,

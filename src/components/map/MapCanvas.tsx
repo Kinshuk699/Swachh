@@ -16,10 +16,33 @@ type MapCanvasProps = {
 
 type CuratedPlacesResponse = {
   places?: HighwayStop[];
+  candidates?: CuratedPlaceCandidate[];
   storedRowsRead?: number;
   placeDetailsRequests?: number;
   textSearchRequests?: number;
   capped?: boolean;
+};
+
+type CuratedPlaceCandidate = {
+  id: string;
+  name: string;
+  category: HighwayStop["category"];
+  distanceFromRouteMeters: number;
+  distanceFromHighwayMeters: number;
+  detourMinutes: number;
+  source: "google_place";
+  confidence: number;
+  verified: boolean;
+  highway: string;
+  locality: string;
+  priceLabel: HighwayStop["priceLabel"];
+  facilities: string[];
+  placeId: string;
+  isPaidPremium: boolean;
+  cleanlinessLabel: string;
+  sourceLabel: string;
+  cleanlinessTier?: HighwayStop["cleanlinessTier"];
+  verificationStatus?: HighwayStop["verificationStatus"];
 };
 
 type HighwayGeometry = {
@@ -95,10 +118,13 @@ const highwayFocusedMapStyles = [
 export function MapCanvas({ stops, routePolyline, onSelectStop }: MapCanvasProps) {
   const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
   const [curatedStops, setCuratedStops] = useState<HighwayStop[]>([]);
+  const [curatedCandidates, setCuratedCandidates] = useState<CuratedPlaceCandidate[]>([]);
   const [curatedMeta, setCuratedMeta] = useState<Pick<CuratedPlacesResponse, "storedRowsRead" | "placeDetailsRequests" | "textSearchRequests" | "capped">>({});
   const [curatedLoading, setCuratedLoading] = useState(false);
   const [activeInfoStopId, setActiveInfoStopId] = useState<string | null>(null);
   const [placeDetailsById, setPlaceDetailsById] = useState<Record<string, GooglePlaceDetails>>({});
+  const [detailsLoadingByPlaceId, setDetailsLoadingByPlaceId] = useState<Record<string, boolean>>({});
+  const [onDemandPlaceDetailsRequests, setOnDemandPlaceDetailsRequests] = useState(0);
   const [nationalHighways, setNationalHighways] = useState<NationalHighwayOverlay[]>([]);
   const [highwayAttribution, setHighwayAttribution] = useState("");
   const [selectedHighwayId, setSelectedHighwayId] = useState<string | null>(null);
@@ -119,6 +145,7 @@ export function MapCanvas({ stops, routePolyline, onSelectStop }: MapCanvasProps
         }
 
         setCuratedStops(body.places ?? []);
+        setCuratedCandidates(body.candidates ?? []);
         setCuratedMeta({
           storedRowsRead: body.storedRowsRead,
           placeDetailsRequests: body.placeDetailsRequests,
@@ -129,6 +156,7 @@ export function MapCanvas({ stops, routePolyline, onSelectStop }: MapCanvasProps
       .catch(() => {
         if (!cancelled) {
           setCuratedStops([]);
+          setCuratedCandidates([]);
         }
       })
       .finally(() => {
@@ -174,29 +202,58 @@ export function MapCanvas({ stops, routePolyline, onSelectStop }: MapCanvasProps
   const mapStops = useMemo(() => dedupeStops([...stops, ...curatedStops]), [curatedStops, stops]);
   const activeStop = mapStops.find((stop) => stop.id === activeInfoStopId) ?? null;
   const activeDetails = activeStop?.placeId ? placeDetailsById[activeStop.placeId] : undefined;
+  const selectedHighway = nationalHighways.find((highway) => highway.id === selectedHighwayId) ?? null;
+  const selectedHighwayCandidates = useMemo(() => {
+    if (!selectedHighway) {
+      return [];
+    }
 
-  useEffect(() => {
-    if (!activeStop?.placeId || activeStop.openingHoursText?.length || placeDetailsById[activeStop.placeId]) {
+    const selectedRef = normalizeHighwayLabel(selectedHighway.ref);
+    return curatedCandidates.filter((candidate) => normalizeHighwayLabel(candidate.highway) === selectedRef).slice(0, 8);
+  }, [curatedCandidates, selectedHighway]);
+  const totalPlaceDetailsRequests = (curatedMeta.placeDetailsRequests ?? 0) + onDemandPlaceDetailsRequests;
+
+  async function loadGoogleDetails(target: CuratedPlaceCandidate | HighwayStop) {
+    if (!target.placeId || detailsLoadingByPlaceId[target.placeId]) {
       return;
     }
 
-    let cancelled = false;
+    const cachedDetails = placeDetailsById[target.placeId];
+    if (cachedDetails) {
+      const cachedStop = toHydratedHighwayStop(target, cachedDetails);
+      if (cachedStop) {
+        setCuratedStops((current) => dedupeStops([...current, cachedStop]));
+        setActiveInfoStopId(cachedStop.id);
+        onSelectStop(cachedStop.id);
+      }
+      return;
+    }
 
-    fetch(`/api/google/place-details?placeId=${encodeURIComponent(activeStop.placeId)}`)
-      .then((response) => (response.ok ? response.json() : null))
-      .then((details: GooglePlaceDetails | null) => {
-        if (cancelled || !details) {
-          return;
-        }
+    setDetailsLoadingByPlaceId((current) => ({ ...current, [target.placeId!]: true }));
 
-        setPlaceDetailsById((current) => ({ ...current, [details.id]: details }));
-      })
-      .catch(() => undefined);
+    try {
+      const response = await fetch(`/api/google/place-details?placeId=${encodeURIComponent(target.placeId)}`);
+      const details = response.ok ? ((await response.json()) as GooglePlaceDetails) : null;
 
-    return () => {
-      cancelled = true;
-    };
-  }, [activeStop, placeDetailsById]);
+      if (!details) {
+        return;
+      }
+
+      const hydratedStop = toHydratedHighwayStop(target, details);
+      setPlaceDetailsById((current) => ({ ...current, [details.id]: details }));
+      setOnDemandPlaceDetailsRequests((current) => current + 1);
+
+      if (hydratedStop) {
+        setCuratedStops((current) => dedupeStops([...current, hydratedStop]));
+        setActiveInfoStopId(hydratedStop.id);
+        onSelectStop(hydratedStop.id);
+      }
+    } catch {
+      return;
+    } finally {
+      setDetailsLoadingByPlaceId((current) => ({ ...current, [target.placeId!]: false }));
+    }
+  }
 
   if (!apiKey) {
     return (
@@ -247,7 +304,12 @@ export function MapCanvas({ stops, routePolyline, onSelectStop }: MapCanvasProps
               onCloseClick={() => setActiveInfoStopId(null)}
               position={{ lat: activeDetails?.location?.latitude ?? activeStop.lat, lng: activeDetails?.location?.longitude ?? activeStop.lng }}
             >
-              <PlaceInfoWindow stop={activeStop} details={activeDetails} />
+              <PlaceInfoWindow
+                details={activeDetails}
+                detailsLoading={activeStop.placeId ? detailsLoadingByPlaceId[activeStop.placeId] === true : false}
+                onLoadDetails={activeStop.placeId ? () => void loadGoogleDetails(activeStop) : undefined}
+                stop={activeStop}
+              />
             </InfoWindow>
           ) : null}
         </Map>
@@ -275,6 +337,7 @@ export function MapCanvas({ stops, routePolyline, onSelectStop }: MapCanvasProps
           <div className="mt-3 space-y-2">
             {nationalHighways.map((highway) => {
               const stopCount = countStopsForHighway(mapStops, highway.ref);
+              const candidateCount = countCandidatesForHighway(curatedCandidates, highway.ref);
               return (
                 <button
                   key={highway.id}
@@ -289,11 +352,47 @@ export function MapCanvas({ stops, routePolyline, onSelectStop }: MapCanvasProps
                     <span className="block font-semibold">{highway.ref}</span>
                     <span className="block text-stone-500">{highway.name ?? "National Highway"}</span>
                   </span>
-                  <span className="rounded-full bg-emerald-100 px-2 py-1 font-semibold text-emerald-800">{stopCount}</span>
+                  <span className="rounded-full bg-emerald-100 px-2 py-1 font-semibold text-emerald-800">{Math.max(stopCount, candidateCount)}</span>
                 </button>
               );
             })}
           </div>
+          {selectedHighway ? (
+            <div className="mt-3 border-t border-stone-200 pt-3">
+              <div className="flex items-center justify-between gap-2 text-xs font-semibold">
+                <span>Stored stops</span>
+                <span className="rounded-full bg-stone-100 px-2 py-1 text-[11px] text-stone-600">{selectedHighwayCandidates.length}</span>
+              </div>
+              <div className="mt-2 space-y-2">
+                {selectedHighwayCandidates.length ? (
+                  selectedHighwayCandidates.map((candidate) => {
+                    const isLoading = detailsLoadingByPlaceId[candidate.placeId] === true;
+                    const isLoaded = Boolean(placeDetailsById[candidate.placeId] || mapStops.some((stop) => stop.placeId === candidate.placeId));
+                    return (
+                      <div key={candidate.placeId} className="rounded-md border border-stone-200 bg-stone-50 p-2 text-xs">
+                        <div className="font-semibold text-stone-900">{candidate.name}</div>
+                        <div className="mt-1 flex flex-wrap gap-1 text-[11px] text-stone-600">
+                          <span>{candidate.cleanlinessLabel}</span>
+                          <span>{candidate.distanceFromHighwayMeters} m</span>
+                        </div>
+                        <button
+                          className="mt-2 inline-flex min-h-8 items-center gap-1 rounded-md border border-emerald-200 bg-white px-2 py-1 text-[11px] font-semibold text-emerald-800 transition hover:border-emerald-400 disabled:cursor-not-allowed disabled:opacity-60"
+                          disabled={isLoading}
+                          onClick={() => void loadGoogleDetails(candidate)}
+                          type="button"
+                        >
+                          {isLoading ? <Loader2 className="size-3 animate-spin" aria-hidden="true" /> : null}
+                          {isLoaded ? "Show pin" : "Load details"}
+                        </button>
+                      </div>
+                    );
+                  })
+                ) : (
+                  <div className="rounded-md border border-stone-200 bg-stone-50 p-2 text-xs text-stone-600">No stored stops for this highway yet.</div>
+                )}
+              </div>
+            </div>
+          ) : null}
         </div>
       ) : null}
 
@@ -306,9 +405,13 @@ export function MapCanvas({ stops, routePolyline, onSelectStop }: MapCanvasProps
           {routePolyline
             ? "Route loaded. Click a marker for details and directions."
             : curatedMeta.storedRowsRead
-              ? "Click a marker for hours, access type, and directions."
+              ? `${curatedMeta.storedRowsRead} stored Google candidates are ready for selective detail loading.`
               : "Click a marker for hours, access type, and directions."}
         </p>
+        <div className="mt-2 flex flex-wrap gap-2 text-[11px] font-semibold text-stone-700">
+          <span className="rounded-full bg-emerald-50 px-2 py-1 text-emerald-800">Text Search {curatedMeta.textSearchRequests ?? 0}</span>
+          <span className="rounded-full bg-stone-100 px-2 py-1">Details {totalPlaceDetailsRequests}</span>
+        </div>
         {highwayAttribution ? <p className="mt-1 text-[11px] text-stone-500">{highwayAttribution}</p> : null}
       </div>
     </div>
@@ -357,7 +460,17 @@ function toGooglePaths(geometry: HighwayGeometry): MapLatLng[][] {
   return lines.map((coordinates) => coordinates.map(([lng, lat]) => ({ lat, lng })));
 }
 
-function PlaceInfoWindow({ stop, details }: { stop: HighwayStop; details?: GooglePlaceDetails }) {
+function PlaceInfoWindow({
+  stop,
+  details,
+  detailsLoading,
+  onLoadDetails,
+}: {
+  stop: HighwayStop;
+  details?: GooglePlaceDetails;
+  detailsLoading: boolean;
+  onLoadDetails?: () => void;
+}) {
   const openingHours = details?.weekdayDescriptions.length ? details.weekdayDescriptions : (stop.openingHoursText ?? []);
   const displayName = details?.displayName ?? stop.googlePlaceName ?? stop.name;
   const openNow = details?.openNow ?? stop.openNow;
@@ -390,6 +503,17 @@ function PlaceInfoWindow({ stop, details }: { stop: HighwayStop; details?: Googl
       ) : (
         <div className="border-t pt-2 text-xs text-stone-600">Opening hours load from Google when available.</div>
       )}
+      {onLoadDetails && !details ? (
+        <button
+          className="inline-flex min-h-8 items-center gap-1 rounded-md border border-emerald-200 bg-white px-2 py-1 text-xs font-semibold text-emerald-800 transition hover:border-emerald-400 disabled:cursor-not-allowed disabled:opacity-60"
+          disabled={detailsLoading}
+          onClick={onLoadDetails}
+          type="button"
+        >
+          {detailsLoading ? <Loader2 className="size-3 animate-spin" aria-hidden="true" /> : null}
+          {detailsLoading ? "Loading details" : "Load Google details"}
+        </button>
+      ) : null}
       {googleMapsUri ? (
         <a className="inline-flex items-center gap-1 text-xs font-medium text-emerald-800 hover:underline" href={googleMapsUri} rel="noreferrer" target="_blank">
           Open in Google Maps
@@ -413,6 +537,55 @@ function normalizeHighwayLabel(value: string): string {
 function countStopsForHighway(stops: HighwayStop[], highwayRef: string): number {
   const normalizedRef = normalizeHighwayLabel(highwayRef);
   return stops.filter((stop) => normalizeHighwayLabel(stop.highway) === normalizedRef).length;
+}
+
+function countCandidatesForHighway(candidates: CuratedPlaceCandidate[], highwayRef: string): number {
+  const normalizedRef = normalizeHighwayLabel(highwayRef);
+  return candidates.filter((candidate) => normalizeHighwayLabel(candidate.highway) === normalizedRef).length;
+}
+
+function toHydratedHighwayStop(target: CuratedPlaceCandidate | HighwayStop, details: GooglePlaceDetails): HighwayStop | null {
+  const existingStop = isHighwayStop(target) ? target : null;
+  const latitude = details.location?.latitude ?? existingStop?.lat;
+  const longitude = details.location?.longitude ?? existingStop?.lng;
+
+  if (typeof latitude !== "number" || typeof longitude !== "number") {
+    return null;
+  }
+
+  return {
+    id: target.id,
+    name: details.displayName || target.name,
+    category: target.category,
+    distanceFromRouteMeters: target.distanceFromRouteMeters,
+    distanceFromHighwayMeters: target.distanceFromHighwayMeters,
+    detourMinutes: target.detourMinutes,
+    isEndpointStagingArea: existingStop?.isEndpointStagingArea ?? false,
+    isInsideDenseCity: existingStop?.isInsideDenseCity ?? false,
+    source: "google_place",
+    confidence: target.confidence,
+    openNow: details.openNow ?? existingStop?.openNow ?? false,
+    verified: target.verified,
+    lat: latitude,
+    lng: longitude,
+    highway: target.highway,
+    locality: target.locality,
+    priceLabel: target.priceLabel,
+    facilities: target.facilities,
+    placeId: target.placeId,
+    googleMapsUri: details.googleMapsUri ?? existingStop?.googleMapsUri,
+    googlePlaceName: details.displayName || existingStop?.googlePlaceName,
+    openingHoursText: details.weekdayDescriptions.length ? details.weekdayDescriptions : existingStop?.openingHoursText,
+    isPaidPremium: target.isPaidPremium,
+    cleanlinessLabel: target.cleanlinessLabel,
+    sourceLabel: target.sourceLabel,
+    cleanlinessTier: target.cleanlinessTier,
+    verificationStatus: target.verificationStatus,
+  };
+}
+
+function isHighwayStop(stop: CuratedPlaceCandidate | HighwayStop): stop is HighwayStop {
+  return "lat" in stop && "lng" in stop;
 }
 
 function markerIconForStop(stop: HighwayStop): string {

@@ -81,7 +81,8 @@ describe("MapCanvas", () => {
         return new Response(
           JSON.stringify({
             visibility: "all_found",
-            places: [
+            places: [],
+            candidates: [
               {
                 id: "google-tier-three",
                 name: "Village Food Courts",
@@ -109,7 +110,7 @@ describe("MapCanvas", () => {
               },
             ],
             storedRowsRead: 1,
-            placeDetailsRequests: 1,
+            placeDetailsRequests: 0,
             textSearchRequests: 0,
             capped: false,
           }),
@@ -125,7 +126,64 @@ describe("MapCanvas", () => {
     expect(await screen.findByText("NH-44")).toBeTruthy();
     expect(screen.getByText("© OpenStreetMap contributors")).toBeTruthy();
     expect(screen.getByText(/Tier 3/i)).toBeTruthy();
+    fireEvent.click(screen.getByText("NH-44").closest("button")!);
     expect(screen.getByText("Village Food Courts")).toBeTruthy();
+    expect(screen.getByText(/Text Search 0/i)).toBeTruthy();
+    expect(screen.getByText(/Details 0/i)).toBeTruthy();
+  });
+
+  it("loads Google Details only after an explicit traveler action", async () => {
+    process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY = "browser-key";
+    const stop = sampleHighwayStops.find((candidate) => candidate.id === "city-edge-fuel-station")!;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL | Request) => {
+        const url = String(input);
+
+        if (url.includes("/api/google/place-details")) {
+          return new Response(
+            JSON.stringify({
+              id: stop.placeId,
+              displayName: "City Edge Fuel Station",
+              location: { latitude: stop.lat, longitude: stop.lng },
+              types: ["gas_station"],
+              googleMapsUri: "https://maps.google.com/?cid=789",
+              openNow: true,
+              weekdayDescriptions: ["Monday: Open 24 hours"],
+            }),
+            { status: 200 },
+          );
+        }
+
+        if (url.includes("/api/highways/national")) {
+          return new Response(JSON.stringify({ highways: [] }), { status: 200 });
+        }
+
+        return new Response(
+          JSON.stringify({
+            places: [],
+            candidates: [],
+            storedRowsRead: 0,
+            placeDetailsRequests: 0,
+            textSearchRequests: 0,
+            capped: false,
+          }),
+          { status: 200 },
+        );
+      }),
+    );
+
+    render(<MapCanvas stops={[stop]} selectedStopId="" onSelectStop={() => {}} />);
+
+    fireEvent.click(await screen.findByText("City Edge Fuel Station"));
+    const loadDetailsButton = await screen.findByRole("button", { name: /load google details/i });
+    expect(fetch).not.toHaveBeenCalledWith(expect.stringContaining("/api/google/place-details"));
+
+    fireEvent.click(loadDetailsButton);
+
+    await waitFor(() => expect(fetch).toHaveBeenCalledWith(`/api/google/place-details?placeId=${encodeURIComponent(stop.placeId!)}`));
+    expect(await screen.findByText("Monday: Open 24 hours")).toBeTruthy();
+    expect(screen.getByText(/Details 1/i)).toBeTruthy();
   });
 
   it("shows a Google Maps configuration message when the browser key is missing", () => {
