@@ -1,7 +1,7 @@
 import { toStoredGooglePlaceReference, type StoredGooglePlaceReference } from "../google/place-policy.ts";
 
 export const googleTextSearchFieldMask = "places.id,places.name,places.location,places.displayName,places.types";
-export const defaultMaxHighwayDiversionMeters = 1_000;
+export const defaultMaxHighwayDiversionMeters = 2_000;
 
 export type LatLng = {
   latitude: number;

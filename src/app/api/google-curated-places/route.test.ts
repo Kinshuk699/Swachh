@@ -97,7 +97,7 @@ describe("GET /api/google-curated-places", () => {
     expect(JSON.stringify(body.places[0])).not.toContain("tier_1");
     expect(fromSpy).toHaveBeenCalledWith("google_curated_places");
     expect(inSpy).toHaveBeenCalledWith("verification_status", ["likely_clean", "verified_clean", "approved"]);
-    expect(lteSpy).toHaveBeenCalledWith("distance_from_highway_meters", 1_000);
+    expect(lteSpy).toHaveBeenCalledWith("distance_from_highway_meters", 2_000);
     expect(firstOrderSpy).toHaveBeenCalledWith("cleanliness_tier", { ascending: true });
     expect(secondOrderSpy).toHaveBeenCalledWith("restroom_confidence", { ascending: false });
     expect(limitSpy).toHaveBeenCalledWith(5);
@@ -175,7 +175,7 @@ describe("GET /api/google-curated-places", () => {
       verificationStatus: "matched",
     });
     expect(inSpy).toHaveBeenCalledWith("verification_status", ["likely_clean", "matched", "verified_clean", "approved"]);
-    expect(lteSpy).toHaveBeenCalledWith("distance_from_highway_meters", 1_000);
+    expect(lteSpy).toHaveBeenCalledWith("distance_from_highway_meters", 2_000);
     expect(limitSpy).toHaveBeenCalledWith(2000);
     expect(fetch).not.toHaveBeenCalledWith(expect.stringContaining("tier-four-dhaba-id"), expect.anything());
   });
