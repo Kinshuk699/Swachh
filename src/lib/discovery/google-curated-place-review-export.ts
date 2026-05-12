@@ -68,6 +68,33 @@ export function toRejectedGoogleCuratedPlaceReviewRow(
   };
 }
 
+export function toRejectedGoogleCuratedPlaceReviewUnavailableRow(
+  record: RejectedGoogleCuratedPlaceRecord,
+  message: string,
+): RejectedGoogleCuratedPlaceReviewRow {
+  return {
+    reviewDecision: "",
+    seedName: record.seed_name,
+    resolvedGoogleName: "Google Details unavailable",
+    googleTypes: ["details_unavailable"],
+    googleMapsUrl: "",
+    googlePlaceId: record.google_place_id,
+    highwayName: record.highway_name,
+    routeContext: record.route_context ?? "",
+    region: record.region,
+    proxyType: record.proxy_type,
+    cleanlinessTier: record.cleanliness_tier,
+    sourceCategory: record.source_category,
+    restroomConfidence: record.restroom_confidence,
+    distanceFromHighwayMeters: record.distance_from_highway_meters,
+    localNotes: compactJoin([`Google Place Details unavailable: ${message}`, record.local_notes], " | "),
+    sourceEvidence: record.source_evidence,
+    id: record.id,
+    matchedAt: record.matched_at,
+    updatedAt: record.updated_at,
+  };
+}
+
 export function createRejectedGoogleCuratedPlacesReview(input: {
   generatedDate: string;
   supabaseUrl: string;
@@ -183,6 +210,10 @@ function csvCell(value: string): string {
   }
 
   return `"${value.replaceAll('"', '""')}"`;
+}
+
+function compactJoin(parts: Array<string | null | undefined>, separator: string): string {
+  return parts.filter((part): part is string => Boolean(part?.trim())).join(separator);
 }
 
 function countBy<T>(items: T[], keyForItem: (item: T) => string): Map<string, number> {

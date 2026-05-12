@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const limitSpy = vi.fn();
-const secondOrderSpy = vi.fn(() => ({ limit: limitSpy }));
+const rangeSpy = vi.fn();
+const secondOrderSpy = vi.fn(() => ({ limit: limitSpy, range: rangeSpy }));
 const firstOrderSpy = vi.fn(() => ({ order: secondOrderSpy }));
 const lteSpy = vi.fn(() => ({ order: firstOrderSpy }));
 const inSpy = vi.fn(() => ({ order: firstOrderSpy, lte: lteSpy }));
@@ -31,8 +32,7 @@ describe("GET /api/google-curated-places", () => {
     process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
     process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role-key";
     process.env.GOOGLE_MAPS_SERVER_API_KEY = "server-key";
-    limitSpy.mockResolvedValue({
-      data: [
+    mockSupabaseRows([
         {
           google_place_id: "google-place-id",
           seed_name: "Lavato",
@@ -48,9 +48,7 @@ describe("GET /api/google-curated-places", () => {
           local_notes: "Premium AC lavatory",
           verification_status: "likely_clean",
         },
-      ],
-      error: null,
-    });
+    ]);
     vi.stubGlobal("fetch", vi.fn(async () => new Response(null, { status: 500 })));
     const { GET } = await import("./route");
 
@@ -79,15 +77,14 @@ describe("GET /api/google-curated-places", () => {
     expect(lteSpy).toHaveBeenCalledWith("distance_from_highway_meters", 2_000);
     expect(firstOrderSpy).toHaveBeenCalledWith("cleanliness_tier", { ascending: true });
     expect(secondOrderSpy).toHaveBeenCalledWith("restroom_confidence", { ascending: false });
-    expect(limitSpy).toHaveBeenCalledWith(5);
+    expect(rangeSpy).toHaveBeenCalledWith(0, 4);
   });
 
   it("supports all_found visibility for stored Tier 1, Tier 2, and Tier 3 candidates without rejected or Tier 4 rows", async () => {
     process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
     process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role-key";
     process.env.GOOGLE_MAPS_SERVER_API_KEY = "server-key";
-    limitSpy.mockResolvedValue({
-      data: [
+    mockSupabaseRows([
         {
           google_place_id: "tier-three-food-plaza-id",
           seed_name: "Village Food Courts",
@@ -118,9 +115,7 @@ describe("GET /api/google-curated-places", () => {
           local_notes: "Long-tail dhaba candidate",
           verification_status: "matched",
         },
-      ],
-      error: null,
-    });
+    ]);
     vi.stubGlobal("fetch", vi.fn(async () => new Response(null, { status: 500 })));
     const { GET } = await import("./route");
 
@@ -142,16 +137,64 @@ describe("GET /api/google-curated-places", () => {
     });
     expect(inSpy).toHaveBeenCalledWith("verification_status", ["likely_clean", "matched", "verified_clean", "approved"]);
     expect(lteSpy).toHaveBeenCalledWith("distance_from_highway_meters", 2_000);
-    expect(limitSpy).toHaveBeenCalledWith(2000);
+    expect(rangeSpy).toHaveBeenCalledWith(0, 999);
     expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("hydrates the current accepted-row scale for all_found map pins with temporary Details cache", async () => {
+    process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
+    process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role-key";
+    process.env.GOOGLE_MAPS_SERVER_API_KEY = "server-key";
+    const rows = Array.from({ length: 1201 }, (_, index) => ({
+      google_place_id: `kfc-place-${index}`,
+      seed_name: "KFC",
+      region: "India",
+      proxy_type: "qsr",
+      cleanliness_tier: "tier_3",
+      source_category: "organized_qsr",
+      source_evidence: "QSR proxy for organized food courts",
+      highway_name: "NH-44",
+      route_context: "National corridor",
+      restroom_confidence: 0.74,
+      distance_from_highway_meters: 100,
+      local_notes: "QSR proxy for organized food courts",
+      verification_status: "matched",
+    }));
+    mockSupabaseRows(rows);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL | Request) => {
+        const placeId = String(input).split("/").at(-1) ?? "kfc-place-0";
+
+        return new Response(
+          JSON.stringify({
+            id: decodeURIComponent(placeId),
+            displayName: { text: "KFC Highway Stop" },
+            location: { latitude: 12.5, longitude: 77.6 },
+            types: ["fast_food_restaurant", "restaurant", "food"],
+          }),
+          { status: 200 },
+        );
+      }),
+    );
+    const { GET } = await import("./route");
+
+    const response = await GET(new Request("http://localhost/api/google-curated-places?visibility=all_found&details=google&limit=1500"));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.places).toHaveLength(1201);
+    expect(body.placeDetailsRequests).toBe(1201);
+    expect(body.textSearchRequests).toBe(0);
+    expect(rangeSpy).toHaveBeenCalledWith(0, 999);
+    expect(rangeSpy).toHaveBeenCalledWith(1000, 1999);
   });
 
   it("skips stored candidates when Google Details resolves to a mismatched place name", async () => {
     process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
     process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role-key";
     process.env.GOOGLE_MAPS_SERVER_API_KEY = "server-key";
-    limitSpy.mockResolvedValue({
-      data: [
+    mockSupabaseRows([
         {
           google_place_id: "lavato-place-id",
           seed_name: "Lavato",
@@ -182,9 +225,7 @@ describe("GET /api/google-curated-places", () => {
           local_notes: "Official wayside amenity proxy",
           verification_status: "likely_clean",
         },
-      ],
-      error: null,
-    });
+    ]);
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: string | URL | Request) => {
@@ -216,8 +257,7 @@ describe("GET /api/google-curated-places", () => {
     process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
     process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role-key";
     process.env.GOOGLE_MAPS_SERVER_API_KEY = "server-key";
-    limitSpy.mockResolvedValue({
-      data: [
+    mockSupabaseRows([
         {
           google_place_id: "bad-cube-place-id",
           seed_name: "Cube Stop",
@@ -263,9 +303,7 @@ describe("GET /api/google-curated-places", () => {
           local_notes: "Modern mobility station",
           verification_status: "likely_clean",
         },
-      ],
-      error: null,
-    });
+    ]);
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: string | URL | Request) => {
@@ -306,3 +344,13 @@ describe("GET /api/google-curated-places", () => {
     expect(body.places.map((place: { placeId: string }) => place.placeId)).toEqual(["good-lavato-place-id", "good-jio-place-id"]);
   });
 });
+
+function mockSupabaseRows(rows: unknown[]) {
+  limitSpy.mockResolvedValue({ data: rows, error: null });
+  rangeSpy.mockImplementation((from: number, to: number) =>
+    Promise.resolve({
+      data: rows.slice(from, to + 1),
+      error: null,
+    }),
+  );
+}

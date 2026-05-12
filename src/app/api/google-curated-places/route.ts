@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 
 import {
@@ -14,11 +15,13 @@ import type { HighwayStop } from "@/lib/restrooms/sample-stops";
 
 const DEFAULT_MAP_LIMIT = 40;
 const DEFAULT_MAX_MAP_LIMIT = 80;
-const DEFAULT_ALL_FOUND_MAP_LIMIT = 1000;
+const DEFAULT_ALL_FOUND_MAP_LIMIT = 1500;
 const DEFAULT_STORED_ROW_LIMIT = 500;
 const DEFAULT_ALL_FOUND_STORED_ROW_LIMIT = 2000;
 const MAP_RESPONSE_CACHE_CONTROL = "public, s-maxage=3600, stale-while-revalidate=86400";
 const PLACE_DETAILS_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const PLACE_DETAILS_HYDRATION_CONCURRENCY = 25;
+const SUPABASE_PAGE_SIZE = 1000;
 const publicMapStatuses = ["likely_clean", "verified_clean", "approved"] as const;
 const allFoundMapStatuses = ["likely_clean", "matched", "verified_clean", "approved"] as const;
 const allFoundMapTiers = ["tier_1", "tier_2", "tier_3"] as const satisfies CleanlinessTier[];
@@ -111,14 +114,7 @@ export async function GET(request: Request) {
   const supabase = createClient(supabaseUrl, serviceRoleKey, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
-  const { data, error } = await supabase
-    .from("google_curated_places")
-    .select(googleCuratedPlaceColumns)
-    .in("verification_status", visibilityStatuses)
-    .lte("distance_from_highway_meters", defaultMaxHighwayDiversionMeters)
-    .order("cleanliness_tier", { ascending: true })
-    .order("restroom_confidence", { ascending: false })
-    .limit(storedRowLimit);
+  const { data, error } = await fetchStoredGoogleCuratedPlaceRows({ storedRowLimit, supabase, visibilityStatuses });
 
   if (error) {
     return NextResponse.json(
@@ -157,30 +153,13 @@ export async function GET(request: Request) {
   }
 
   const maxPlaceDetailsRequests = Math.min(diversifiedRows.length, limit * 2);
-  const places: HighwayStop[] = [];
-  let placeDetailsRequests = 0;
-
-  for (const row of diversifiedRows) {
-    if (places.length >= limit || placeDetailsRequests >= maxPlaceDetailsRequests) {
-      break;
-    }
-
-    placeDetailsRequests += 1;
-
-    try {
-      const details = await getCachedPlaceDetails(row.google_place_id, apiKey!);
-      if (!isRelevantGooglePlaceMatch(row, details)) {
-        continue;
-      }
-
-      const stop = toHighwayStop(row, details, visibility);
-      if (stop) {
-        places.push(stop);
-      }
-    } catch {
-      continue;
-    }
-  }
+  const { places, placeDetailsRequests } = await hydrateHighwayStops({
+    apiKey: apiKey!,
+    limit,
+    maxPlaceDetailsRequests,
+    rows: diversifiedRows,
+    visibility,
+  });
 
   const hitStoredRowCap = storedRows.length === storedRowLimit;
   const hitDetailsRequestCap = places.length < limit && placeDetailsRequests === maxPlaceDetailsRequests && maxPlaceDetailsRequests < diversifiedRows.length;
@@ -198,6 +177,81 @@ export async function GET(request: Request) {
     },
     { headers: { "Cache-Control": MAP_RESPONSE_CACHE_CONTROL } },
   );
+}
+
+async function fetchStoredGoogleCuratedPlaceRows(input: {
+  storedRowLimit: number;
+  supabase: SupabaseClient;
+  visibilityStatuses: GoogleCuratedPlaceVerificationStatus[];
+}): Promise<{ data: GoogleCuratedPlaceRow[]; error: { message: string } | null }> {
+  const rows: GoogleCuratedPlaceRow[] = [];
+
+  for (let from = 0; from < input.storedRowLimit; from += SUPABASE_PAGE_SIZE) {
+    const to = Math.min(from + SUPABASE_PAGE_SIZE - 1, input.storedRowLimit - 1);
+    const { data, error } = await input.supabase
+      .from("google_curated_places")
+      .select(googleCuratedPlaceColumns)
+      .in("verification_status", input.visibilityStatuses)
+      .lte("distance_from_highway_meters", defaultMaxHighwayDiversionMeters)
+      .order("cleanliness_tier", { ascending: true })
+      .order("restroom_confidence", { ascending: false })
+      .range(from, to);
+
+    if (error) {
+      return { data: [], error };
+    }
+
+    const pageRows = (data ?? []) as unknown as GoogleCuratedPlaceRow[];
+    rows.push(...pageRows);
+
+    if (pageRows.length < to - from + 1) {
+      break;
+    }
+  }
+
+  return { data: rows, error: null };
+}
+
+async function hydrateHighwayStops(input: {
+  apiKey: string;
+  limit: number;
+  maxPlaceDetailsRequests: number;
+  rows: GoogleCuratedPlaceRow[];
+  visibility: CuratedMapVisibility;
+}): Promise<{ places: HighwayStop[]; placeDetailsRequests: number }> {
+  const places: HighwayStop[] = [];
+  let placeDetailsRequests = 0;
+
+  for (let index = 0; index < input.maxPlaceDetailsRequests && places.length < input.limit; index += PLACE_DETAILS_HYDRATION_CONCURRENCY) {
+    const batch = input.rows.slice(index, Math.min(index + PLACE_DETAILS_HYDRATION_CONCURRENCY, input.maxPlaceDetailsRequests));
+    placeDetailsRequests += batch.length;
+    const stops = await Promise.all(
+      batch.map(async (row) => {
+        try {
+          const details = await getCachedPlaceDetails(row.google_place_id, input.apiKey);
+          if (!isRelevantGooglePlaceMatch(row, details)) {
+            return null;
+          }
+
+          return toHighwayStop(row, details, input.visibility);
+        } catch {
+          return null;
+        }
+      }),
+    );
+
+    for (const stop of stops) {
+      if (stop) {
+        places.push(stop);
+      }
+
+      if (places.length >= input.limit) {
+        break;
+      }
+    }
+  }
+
+  return { places, placeDetailsRequests };
 }
 
 async function getCachedPlaceDetails(placeId: string, apiKey: string): Promise<GooglePlaceDetails> {

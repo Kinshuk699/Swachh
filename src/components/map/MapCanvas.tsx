@@ -87,7 +87,7 @@ type RuntimeGoogleMaps = {
 };
 
 const indiaCenter = { lat: 22.9734, lng: 78.6569 };
-const storedCuratedMapLimit = 1000;
+const storedCuratedMapLimit = 1500;
 const standardMarkerIconUrl = "https://maps.google.com/mapfiles/ms/icons/red-dot.png";
 const premiumMarkerIconUrl = "https://maps.google.com/mapfiles/ms/icons/yellow-dot.png";
 const tierThreeMarkerIconUrl = "https://maps.google.com/mapfiles/ms/icons/orange-dot.png";
@@ -138,7 +138,7 @@ export function MapCanvas({ stops, routePolyline, onSelectStop }: MapCanvasProps
     let cancelled = false;
     setCuratedLoading(true);
 
-    fetch(`/api/google-curated-places?visibility=all_found&limit=${storedCuratedMapLimit}`)
+    fetch(`/api/google-curated-places?visibility=all_found&details=google&limit=${storedCuratedMapLimit}`)
       .then((response) => (response.ok ? response.json() : null))
       .then((body: CuratedPlacesResponse | null) => {
         if (cancelled || !body) {
@@ -416,7 +416,7 @@ export function MapCanvas({ stops, routePolyline, onSelectStop }: MapCanvasProps
             : curatedMeta.storedRowsRead
               ? selectedHighway
                 ? `${visibleMapStops.length} mapped stops and ${selectedHighwayCandidates.length} stored candidates for ${selectedHighway.ref}.`
-                : `${curatedMeta.storedRowsRead} stored Google candidates are ready for selective detail loading.`
+                : `${mapStops.length} mapped stops from ${curatedMeta.storedRowsRead} stored Google candidates using temporary Details cache.`
               : "Click a marker for hours, access type, and directions."}
         </p>
         <div className="mt-2 flex flex-wrap gap-2 text-[11px] font-semibold text-stone-700">

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   createRejectedGoogleCuratedPlacesReview,
+  toRejectedGoogleCuratedPlaceReviewUnavailableRow,
   toRejectedGoogleCuratedPlaceReviewRow,
   type RejectedGoogleCuratedPlaceRecord,
 } from "./google-curated-place-review-export";
@@ -69,5 +70,18 @@ describe("rejected Google curated place review export", () => {
     expect(review.markdown).toContain("- tier_1: 1");
     expect(review.markdown).toContain("- Cube Stop: 1");
     expect(review.markdown).toContain("Google usage for this export: 0 Text Search requests, 1 Place Details requests.");
+  });
+
+  it("keeps rejected rows in the review sheet when Google Details is unavailable", () => {
+    const row = toRejectedGoogleCuratedPlaceReviewUnavailableRow(rejectedRecord, "404 Place ID is no longer valid");
+
+    expect(row).toMatchObject({
+      seedName: "Cube Stop",
+      resolvedGoogleName: "Google Details unavailable",
+      googleTypes: ["details_unavailable"],
+      googleMapsUrl: "",
+      googlePlaceId: "bad-cube-place-id",
+    });
+    expect(row.localNotes).toContain("Google Place Details unavailable: 404 Place ID is no longer valid");
   });
 });

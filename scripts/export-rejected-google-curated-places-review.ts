@@ -5,6 +5,7 @@ import { createClient } from "@supabase/supabase-js";
 
 import {
   createRejectedGoogleCuratedPlacesReview,
+  toRejectedGoogleCuratedPlaceReviewUnavailableRow,
   toRejectedGoogleCuratedPlaceReviewRow,
   type RejectedGoogleCuratedPlaceRecord,
 } from "../src/lib/discovery/google-curated-place-review-export.ts";
@@ -16,6 +17,8 @@ type ExportArgs = {
   outputDir: string;
 };
 
+const rejectedRowsPageSize = 1000;
+
 loadEnvFile(".env.local");
 
 const args = parseArgs(process.argv.slice(2));
@@ -26,27 +29,23 @@ const supabase = createClient(supabaseUrl, serviceRoleKey, {
   auth: { autoRefreshToken: false, persistSession: false },
 });
 
-const { data, error } = await supabase
-  .from("google_curated_places")
-  .select(
-    "id,google_place_id,seed_name,region,proxy_type,cleanliness_tier,source_category,source_evidence,highway_name,route_context,restroom_confidence,distance_from_highway_meters,local_notes,matched_at,updated_at",
-  )
-  .eq("verification_status", "rejected")
-  .lte("distance_from_highway_meters", defaultMaxHighwayDiversionMeters)
-  .order("cleanliness_tier", { ascending: true })
-  .order("seed_name", { ascending: true })
-  .order("distance_from_highway_meters", { ascending: true });
-
-if (error) {
-  throw new Error(`Supabase rejected-row query failed: ${error.message}`);
-}
-
-const records = (data ?? []) as RejectedGoogleCuratedPlaceRecord[];
+const records = await fetchRejectedGoogleCuratedPlaceRecords();
 const rows = [];
+let placeDetailsFailures = 0;
 
 for (const record of records) {
-  const details = await getPlaceDetails(record.google_place_id, { apiKey: googleApiKey });
-  rows.push(toRejectedGoogleCuratedPlaceReviewRow(record, details));
+  try {
+    const details = await getPlaceDetails(record.google_place_id, { apiKey: googleApiKey });
+    rows.push(toRejectedGoogleCuratedPlaceReviewRow(record, details));
+  } catch (error) {
+    placeDetailsFailures += 1;
+    rows.push(
+      toRejectedGoogleCuratedPlaceReviewUnavailableRow(
+        record,
+        error instanceof Error ? error.message : "Unknown Google Place Details error",
+      ),
+    );
+  }
 }
 
 const review = createRejectedGoogleCuratedPlacesReview({
@@ -70,7 +69,7 @@ console.log(
     {
       ok: true,
       rejectedRows: records.length,
-      googleUsage: { textSearchRequests: 0, placeDetailsRequests: records.length },
+      googleUsage: { textSearchRequests: 0, placeDetailsRequests: records.length, placeDetailsFailures },
       csvPath,
       markdownPath,
     },
@@ -90,6 +89,37 @@ function parseArgs(argv: string[]): ExportArgs {
   }
 
   return { generatedDate, outputDir };
+}
+
+async function fetchRejectedGoogleCuratedPlaceRecords(): Promise<RejectedGoogleCuratedPlaceRecord[]> {
+  const records: RejectedGoogleCuratedPlaceRecord[] = [];
+
+  for (let page = 0; ; page += 1) {
+    const from = page * rejectedRowsPageSize;
+    const to = from + rejectedRowsPageSize - 1;
+    const { data, error } = await supabase
+      .from("google_curated_places")
+      .select(
+        "id,google_place_id,seed_name,region,proxy_type,cleanliness_tier,source_category,source_evidence,highway_name,route_context,restroom_confidence,distance_from_highway_meters,local_notes,matched_at,updated_at",
+      )
+      .eq("verification_status", "rejected")
+      .lte("distance_from_highway_meters", defaultMaxHighwayDiversionMeters)
+      .order("cleanliness_tier", { ascending: true })
+      .order("seed_name", { ascending: true })
+      .order("distance_from_highway_meters", { ascending: true })
+      .range(from, to);
+
+    if (error) {
+      throw new Error(`Supabase rejected-row query failed: ${error.message}`);
+    }
+
+    const pageRecords = (data ?? []) as RejectedGoogleCuratedPlaceRecord[];
+    records.push(...pageRecords);
+
+    if (pageRecords.length < rejectedRowsPageSize) {
+      return records;
+    }
+  }
 }
 
 function loadEnvFile(path: string) {
