@@ -57,6 +57,7 @@ export type GoogleCuratedPlaceDiscoverySummary = {
 export type GoogleCuratedPlaceDiscoveryPlan = {
   totalJobs: number;
   plannedJobs: number;
+  jobOffset: number;
   plannedTextSearchRequests: number;
   missingCorridorJobs: number;
   maxDiversionMeters: number;
@@ -72,6 +73,7 @@ type SearchTextPlaces = (
 type GoogleCuratedPlaceDiscoveryPlanningInput = {
   jobs?: GoogleTextSearchJob[];
   corridors?: HighwaySearchCorridor[];
+  jobOffset?: number;
   jobLimit?: number;
   seedNames?: string[];
   cleanlinessTiers?: CleanlinessTier[];
@@ -89,6 +91,7 @@ export async function discoverGoogleCuratedPlaces(input: {
   apiKey: string;
   jobs?: GoogleTextSearchJob[];
   corridors?: HighwaySearchCorridor[];
+  jobOffset?: number;
   jobLimit?: number;
   seedNames?: string[];
   cleanlinessTiers?: CleanlinessTier[];
@@ -293,7 +296,8 @@ function buildGoogleCuratedPlaceDiscoveryPlanning(input: GoogleCuratedPlaceDisco
     seedNames: input.seedNames,
     cleanlinessTiers: input.cleanlinessTiers,
   });
-  const jobs = typeof input.jobLimit === "number" ? allJobs.slice(0, input.jobLimit) : allJobs;
+  const jobOffset = input.jobOffset ?? 0;
+  const jobs = typeof input.jobLimit === "number" ? allJobs.slice(jobOffset, jobOffset + input.jobLimit) : allJobs.slice(jobOffset);
   const plannedJobs = jobs.map((job) => ({ job, corridor: findCorridorForJob(job, corridors) }));
   const plannedTextSearchRequests = plannedJobs.filter((plannedJob) => plannedJob.corridor).length;
   const missingCorridorJobs = plannedJobs.length - plannedTextSearchRequests;
@@ -306,6 +310,7 @@ function buildGoogleCuratedPlaceDiscoveryPlanning(input: GoogleCuratedPlaceDisco
     plan: {
       totalJobs: allJobs.length,
       plannedJobs: jobs.length,
+      jobOffset,
       plannedTextSearchRequests,
       missingCorridorJobs,
       maxDiversionMeters,

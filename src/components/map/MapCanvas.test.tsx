@@ -132,6 +132,120 @@ describe("MapCanvas", () => {
     expect(screen.getByText(/Details 0/i)).toBeTruthy();
   });
 
+  it("dims every other National Highway when one highway is selected", async () => {
+    process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY = "browser-key";
+    const polylineOptions: Array<{ strokeColor: string; strokeOpacity: number; strokeWeight: number }> = [];
+    const polylineSpy = vi.fn(function Polyline(options: { strokeColor: string; strokeOpacity: number; strokeWeight: number }) {
+      polylineOptions.push(options);
+      return { setMap: vi.fn() };
+    });
+    vi.stubGlobal("google", { maps: { Polyline: polylineSpy } });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL | Request) => {
+        const url = String(input);
+        if (url.includes("/api/highways/national")) {
+          return new Response(
+            JSON.stringify({
+              highways: [
+                {
+                  id: "nh-44-sample",
+                  ref: "NH-44",
+                  name: "National Highway 44",
+                  color: "#2563eb",
+                  bounds: { north: 15, south: 13, east: 78, west: 77 },
+                  geometry: { type: "LineString", coordinates: [[77.6, 13.6], [77.8, 14.2]] },
+                },
+                {
+                  id: "nh-48-sample",
+                  ref: "NH-48",
+                  name: "National Highway 48",
+                  color: "#dc2626",
+                  bounds: { north: 20, south: 18, east: 74, west: 72 },
+                  geometry: { type: "LineString", coordinates: [[72.9, 18.8], [73.4, 19.4]] },
+                },
+              ],
+            }),
+            { status: 200 },
+          );
+        }
+
+        return new Response(
+          JSON.stringify({
+            places: [],
+            candidates: [],
+            storedRowsRead: 0,
+            placeDetailsRequests: 0,
+            textSearchRequests: 0,
+            capped: false,
+          }),
+          { status: 200 },
+        );
+      }),
+    );
+
+    render(<MapCanvas stops={[]} selectedStopId="" onSelectStop={() => {}} />);
+
+    fireEvent.click(await screen.findByText("NH-48"));
+
+    await waitFor(() => expect(polylineSpy).toHaveBeenCalledTimes(4));
+    const latestPolylineOptions = polylineOptions.slice(-2);
+
+    expect(latestPolylineOptions).toEqual([
+      expect.objectContaining({ strokeColor: "#9ca3af", strokeOpacity: 0.14, strokeWeight: 3 }),
+      expect.objectContaining({ strokeColor: "#dc2626", strokeOpacity: 0.95, strokeWeight: 7 }),
+    ]);
+  });
+
+  it("hides unrelated restroom markers when a National Highway is selected", async () => {
+    process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY = "browser-key";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL | Request) => {
+        const url = String(input);
+        if (url.includes("/api/highways/national")) {
+          return new Response(
+            JSON.stringify({
+              highways: [
+                {
+                  id: "nh-44-sample",
+                  ref: "NH-44",
+                  name: "National Highway 44",
+                  color: "#2563eb",
+                  bounds: { north: 15, south: 13, east: 78, west: 77 },
+                  geometry: { type: "LineString", coordinates: [[77.6, 13.6], [77.8, 14.2]] },
+                },
+              ],
+            }),
+            { status: 200 },
+          );
+        }
+
+        return new Response(
+          JSON.stringify({
+            places: [],
+            candidates: [],
+            storedRowsRead: 0,
+            placeDetailsRequests: 0,
+            textSearchRequests: 0,
+            capped: false,
+          }),
+          { status: 200 },
+        );
+      }),
+    );
+
+    render(<MapCanvas stops={sampleHighwayStops} selectedStopId="" onSelectStop={() => {}} />);
+
+    expect(await screen.findByText("Expressway Food Plaza")).toBeTruthy();
+    expect(screen.getByText("LAVATO - A Premium Lounge")).toBeTruthy();
+
+    fireEvent.click(screen.getByText("NH-44"));
+
+    await waitFor(() => expect(screen.queryByText("Expressway Food Plaza")).toBeNull());
+    expect(screen.getByText("LAVATO - A Premium Lounge")).toBeTruthy();
+  });
+
   it("loads Google Details only after an explicit traveler action", async () => {
     process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY = "browser-key";
     const stop = sampleHighwayStops.find((candidate) => candidate.id === "city-edge-fuel-station")!;

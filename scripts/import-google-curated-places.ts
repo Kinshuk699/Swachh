@@ -22,6 +22,7 @@ type ImportArgs = {
   dryRun: boolean;
   planOnly: boolean;
   corridorSource: "seeded" | "national-highways";
+  jobOffset?: number;
   jobLimit?: number;
   seedNames?: string[];
   cleanlinessTiers?: CleanlinessTier[];
@@ -42,6 +43,7 @@ const maxTextSearchRequests =
 
 const plan = planGoogleCuratedPlaceDiscovery({
   corridors,
+  jobOffset: args.jobOffset,
   jobLimit: args.jobLimit,
   seedNames: args.seedNames,
   cleanlinessTiers: args.cleanlinessTiers,
@@ -74,6 +76,7 @@ const serviceRoleKey = requireEnv("SUPABASE_SERVICE_ROLE_KEY");
 const discovery = await discoverGoogleCuratedPlaces({
   apiKey: googleApiKey,
   corridors,
+  jobOffset: args.jobOffset,
   jobLimit: args.jobLimit,
   seedNames: args.seedNames,
   cleanlinessTiers: args.cleanlinessTiers,
@@ -161,11 +164,13 @@ function parseArgs(argv: string[]): ImportArgs {
   const dryRun = argv.includes("--dry-run");
   const planOnly = argv.includes("--plan-only");
   const corridorSourceArg = argv.find((arg) => arg.startsWith("--corridor-source="));
+  const jobOffsetArg = argv.find((arg) => arg.startsWith("--job-offset="));
   const jobLimitArg = argv.find((arg) => arg.startsWith("--job-limit="));
   const seedArgs = argv.filter((arg) => arg.startsWith("--seed="));
   const tierArgs = argv.filter((arg) => arg.startsWith("--tier="));
   const maxTextSearchRequestsArg = argv.find((arg) => arg.startsWith("--max-text-search-requests="));
   const maxDiversionMetersArg = argv.find((arg) => arg.startsWith("--max-diversion-meters="));
+  const jobOffset = jobOffsetArg ? Number(jobOffsetArg.slice("--job-offset=".length)) : undefined;
   const jobLimit = jobLimitArg ? Number(jobLimitArg.slice("--job-limit=".length)) : undefined;
   const seedNames = parseCommaSeparatedArgs(seedArgs, "--seed=");
   const cleanlinessTiers = parseTierArgs(tierArgs);
@@ -179,6 +184,10 @@ function parseArgs(argv: string[]): ImportArgs {
 
   if (corridorSource !== "seeded" && corridorSource !== "national-highways") {
     throw new Error("--corridor-source must be either seeded or national-highways.");
+  }
+
+  if (typeof jobOffset === "number" && (!Number.isInteger(jobOffset) || jobOffset < 0)) {
+    throw new Error("--job-offset must be a non-negative integer.");
   }
 
   if (typeof jobLimit === "number" && (!Number.isInteger(jobLimit) || jobLimit <= 0)) {
@@ -196,7 +205,7 @@ function parseArgs(argv: string[]): ImportArgs {
     throw new Error("--max-diversion-meters must be a positive integer.");
   }
 
-  return { dryRun, planOnly, corridorSource, jobLimit, seedNames, cleanlinessTiers, maxTextSearchRequests, maxDiversionMeters };
+  return { dryRun, planOnly, corridorSource, jobOffset, jobLimit, seedNames, cleanlinessTiers, maxTextSearchRequests, maxDiversionMeters };
 }
 
 function buildDiscoveryCorridors(corridorSource: ImportArgs["corridorSource"]): HighwaySearchCorridor[] | undefined {

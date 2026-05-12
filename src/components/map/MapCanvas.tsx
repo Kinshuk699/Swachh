@@ -91,6 +91,7 @@ const storedCuratedMapLimit = 1000;
 const standardMarkerIconUrl = "https://maps.google.com/mapfiles/ms/icons/red-dot.png";
 const premiumMarkerIconUrl = "https://maps.google.com/mapfiles/ms/icons/yellow-dot.png";
 const tierThreeMarkerIconUrl = "https://maps.google.com/mapfiles/ms/icons/orange-dot.png";
+const inactiveHighwayStrokeColor = "#9ca3af";
 
 const highwayFocusedMapStyles = [
   {
@@ -200,9 +201,17 @@ export function MapCanvas({ stops, routePolyline, onSelectStop }: MapCanvasProps
   }, [apiKey]);
 
   const mapStops = useMemo(() => dedupeStops([...stops, ...curatedStops]), [curatedStops, stops]);
-  const activeStop = mapStops.find((stop) => stop.id === activeInfoStopId) ?? null;
-  const activeDetails = activeStop?.placeId ? placeDetailsById[activeStop.placeId] : undefined;
   const selectedHighway = nationalHighways.find((highway) => highway.id === selectedHighwayId) ?? null;
+  const visibleMapStops = useMemo(() => {
+    if (!selectedHighway) {
+      return mapStops;
+    }
+
+    const selectedRef = normalizeHighwayLabel(selectedHighway.ref);
+    return mapStops.filter((stop) => normalizeHighwayLabel(stop.highway) === selectedRef);
+  }, [mapStops, selectedHighway]);
+  const activeStop = visibleMapStops.find((stop) => stop.id === activeInfoStopId) ?? null;
+  const activeDetails = activeStop?.placeId ? placeDetailsById[activeStop.placeId] : undefined;
   const selectedHighwayCandidates = useMemo(() => {
     if (!selectedHighway) {
       return [];
@@ -285,7 +294,7 @@ export function MapCanvas({ stops, routePolyline, onSelectStop }: MapCanvasProps
         >
           <NationalHighwayPolylines highways={nationalHighways} selectedHighwayId={selectedHighwayId} />
 
-          {mapStops.map((stop) => (
+          {visibleMapStops.map((stop) => (
             <Marker
               key={stop.id}
               clickable
@@ -405,7 +414,9 @@ export function MapCanvas({ stops, routePolyline, onSelectStop }: MapCanvasProps
           {routePolyline
             ? "Route loaded. Click a marker for details and directions."
             : curatedMeta.storedRowsRead
-              ? `${curatedMeta.storedRowsRead} stored Google candidates are ready for selective detail loading.`
+              ? selectedHighway
+                ? `${visibleMapStops.length} mapped stops and ${selectedHighwayCandidates.length} stored candidates for ${selectedHighway.ref}.`
+                : `${curatedMeta.storedRowsRead} stored Google candidates are ready for selective detail loading.`
               : "Click a marker for hours, access type, and directions."}
         </p>
         <div className="mt-2 flex flex-wrap gap-2 text-[11px] font-semibold text-stone-700">
@@ -435,9 +446,9 @@ function NationalHighwayPolylines({ highways, selectedHighwayId }: { highways: N
             geodesic: true,
             map,
             path,
-            strokeColor: highway.color,
-            strokeOpacity: selectedHighwayId && selectedHighwayId !== highway.id ? 0.28 : 0.86,
-            strokeWeight: selectedHighwayId === highway.id ? 6 : 4,
+            strokeColor: selectedHighwayId && selectedHighwayId !== highway.id ? inactiveHighwayStrokeColor : highway.color,
+            strokeOpacity: selectedHighwayId ? (selectedHighwayId === highway.id ? 0.95 : 0.14) : 0.86,
+            strokeWeight: selectedHighwayId ? (selectedHighwayId === highway.id ? 7 : 3) : 4,
           }),
       ),
     );

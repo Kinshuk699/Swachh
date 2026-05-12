@@ -63,6 +63,7 @@ describe("discoverGoogleCuratedPlaces", () => {
     expect(plan).toEqual({
       totalJobs: 2,
       plannedJobs: 2,
+      jobOffset: 0,
       plannedTextSearchRequests: 1,
       missingCorridorJobs: 1,
       maxDiversionMeters: 750,
@@ -122,6 +123,24 @@ describe("discoverGoogleCuratedPlaces", () => {
 
     expect(result).toMatchObject({ totalJobs: 2, searchedJobs: 1 });
     expect(searchedJobIds).toEqual(["first"]);
+  });
+
+  it("can resume imports after a job offset without repeating earlier searches", async () => {
+    const searchedJobIds: string[] = [];
+    const result = await discoverGoogleCuratedPlaces({
+      apiKey: "server-key",
+      corridors: [corridor],
+      jobOffset: 1,
+      jobLimit: 1,
+      jobs: [job({ id: "first" }), job({ id: "second" }), job({ id: "third" })],
+      searchTextPlaces: async (googleJob) => {
+        searchedJobIds.push(googleJob.id);
+        return { places: [] };
+      },
+    });
+
+    expect(result).toMatchObject({ totalJobs: 3, searchedJobs: 1 });
+    expect(searchedJobIds).toEqual(["second"]);
   });
 
   it("aborts before Google calls when planned text searches exceed the request cap", async () => {

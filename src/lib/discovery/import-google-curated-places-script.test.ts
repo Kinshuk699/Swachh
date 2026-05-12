@@ -14,6 +14,7 @@ describe("import-google-curated-places script", () => {
         "scripts/import-google-curated-places.ts",
         "--plan-only",
         "--tier=tier_1,tier_2,tier_3",
+        "--job-offset=5",
         "--max-text-search-requests=10",
         "--max-diversion-meters=750",
       ],
@@ -32,6 +33,7 @@ describe("import-google-curated-places script", () => {
 
     expect(summary).toMatchObject({
       planOnly: true,
+      jobOffset: 5,
       maxDiversionMeters: 750,
       maxTextSearchRequests: 10,
       cleanlinessTiers: ["tier_1", "tier_2", "tier_3"],
