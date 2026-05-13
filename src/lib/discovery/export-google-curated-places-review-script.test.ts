@@ -26,3 +26,25 @@ describe("export-google-curated-places-review script", () => {
     expect(stdout).toContain("0 Text Search");
   });
 });
+
+describe("export-google-curated-places-map-ledger script", () => {
+  it("prints help without requiring Google or Supabase env", async () => {
+    const { stdout } = await execFileAsync(
+      "node",
+      ["--experimental-transform-types", "scripts/export-google-curated-places-map-ledger.ts", "--help"],
+      {
+        cwd: process.cwd(),
+        env: {
+          ...process.env,
+          GOOGLE_MAPS_SERVER_API_KEY: "",
+          NEXT_PUBLIC_SUPABASE_URL: "",
+          SUPABASE_SERVICE_ROLE_KEY: "",
+        },
+      },
+    );
+
+    expect(stdout).toContain("export-google-curated-places-map-ledger");
+    expect(stdout).toContain("--date=YYYY-MM-DD");
+    expect(stdout).toContain("0 Text Search");
+  });
+});
