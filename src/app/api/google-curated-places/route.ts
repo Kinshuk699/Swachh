@@ -4,11 +4,14 @@ import { NextResponse } from "next/server";
 
 import {
   defaultMaxHighwayDiversionMeters,
-  isRelevantGooglePlaceCandidate,
   type CleanlinessTier,
   type ProxyType,
   type SourceCategory,
 } from "@/lib/discovery/highway-place-discovery";
+import {
+  classifyGoogleCuratedPlaceDisplay,
+  type GoogleCuratedPlaceDisplayReason,
+} from "@/lib/discovery/google-curated-place-display";
 import { getPlaceDetails, type GooglePlaceDetails } from "@/lib/google/places";
 import { cleanToiletDisplayLabel } from "@/lib/restrooms/clean-toilet-labels";
 import type { HighwayStop } from "@/lib/restrooms/sample-stops";
@@ -29,6 +32,19 @@ const allFoundMapTierSet = new Set<CleanlinessTier>(allFoundMapTiers);
 type CuratedMapVisibility = "public" | "all_found";
 type GoogleCuratedPlaceVerificationStatus = (typeof allFoundMapStatuses)[number];
 type CuratedMapDetailsMode = "stored" | "google";
+type GoogleCuratedPlaceMappingExclusionReason = Exclude<GoogleCuratedPlaceDisplayReason, "displayable">;
+
+type GoogleCuratedPlaceMappingExclusion = {
+  reason: GoogleCuratedPlaceMappingExclusionReason;
+  placeId: string;
+  seedName: string;
+  resolvedGoogleName: string;
+  googleTypes: string[];
+  highway: string;
+  locality: string;
+  cleanlinessTier: CleanlinessTier;
+  sourceCategory: SourceCategory;
+};
 
 const placeDetailsCache = new Map<string, { expiresAt: number; details: GooglePlaceDetails }>();
 
@@ -100,6 +116,7 @@ export async function GET(request: Request) {
         candidates: [],
         storedRowsRead: 0,
         placeDetailsRequests: 0,
+        mappingDiagnostics: toMappingDiagnostics({ placeDetailsRequests: 0, places: [], exclusions: [] }),
         textSearchRequests: 0,
         capped: true,
       },
@@ -124,6 +141,7 @@ export async function GET(request: Request) {
         candidates: [],
         storedRowsRead: 0,
         placeDetailsRequests: 0,
+        mappingDiagnostics: toMappingDiagnostics({ placeDetailsRequests: 0, places: [], exclusions: [] }),
         textSearchRequests: 0,
         capped: true,
       },
@@ -145,6 +163,7 @@ export async function GET(request: Request) {
         candidates,
         storedRowsRead: rows.length,
         placeDetailsRequests: 0,
+        mappingDiagnostics: toMappingDiagnostics({ placeDetailsRequests: 0, places: [], exclusions: [] }),
         textSearchRequests: 0,
         capped: storedRows.length === storedRowLimit || candidates.length < diversifiedRows.length,
       },
@@ -153,7 +172,7 @@ export async function GET(request: Request) {
   }
 
   const maxPlaceDetailsRequests = Math.min(diversifiedRows.length, limit * 2);
-  const { places, placeDetailsRequests } = await hydrateHighwayStops({
+  const { places, placeDetailsRequests, exclusions } = await hydrateHighwayStops({
     apiKey: apiKey!,
     limit,
     maxPlaceDetailsRequests,
@@ -172,6 +191,7 @@ export async function GET(request: Request) {
       candidates,
       storedRowsRead: rows.length,
       placeDetailsRequests,
+      mappingDiagnostics: toMappingDiagnostics({ placeDetailsRequests, places, exclusions }),
       textSearchRequests: 0,
       capped: hitStoredRowCap || hitDetailsRequestCap,
     },
@@ -218,8 +238,9 @@ async function hydrateHighwayStops(input: {
   maxPlaceDetailsRequests: number;
   rows: GoogleCuratedPlaceRow[];
   visibility: CuratedMapVisibility;
-}): Promise<{ places: HighwayStop[]; placeDetailsRequests: number }> {
+}): Promise<{ places: HighwayStop[]; placeDetailsRequests: number; exclusions: GoogleCuratedPlaceMappingExclusion[] }> {
   const places: HighwayStop[] = [];
+  const exclusions: GoogleCuratedPlaceMappingExclusion[] = [];
   let placeDetailsRequests = 0;
 
   for (let index = 0; index < input.maxPlaceDetailsRequests && places.length < input.limit; index += PLACE_DETAILS_HYDRATION_CONCURRENCY) {
@@ -229,20 +250,25 @@ async function hydrateHighwayStops(input: {
       batch.map(async (row) => {
         try {
           const details = await getCachedPlaceDetails(row.google_place_id, input.apiKey);
-          if (!isRelevantGooglePlaceMatch(row, details)) {
-            return null;
+          const decision = classifyGoogleCuratedPlaceDisplay(row, details);
+          if (!decision.displayable) {
+            return { exclusion: toMappingExclusion(row, decision.reason, details), stop: null };
           }
 
-          return toHighwayStop(row, details, input.visibility);
+          return { exclusion: null, stop: toHighwayStop(row, details, input.visibility) };
         } catch {
-          return null;
+          return { exclusion: toMappingExclusion(row, "details_unavailable"), stop: null };
         }
       }),
     );
 
-    for (const stop of stops) {
-      if (stop) {
-        places.push(stop);
+    for (const result of stops) {
+      if (result.exclusion) {
+        exclusions.push(result.exclusion);
+      }
+
+      if (result.stop) {
+        places.push(result.stop);
       }
 
       if (places.length >= input.limit) {
@@ -251,7 +277,7 @@ async function hydrateHighwayStops(input: {
     }
   }
 
-  return { places, placeDetailsRequests };
+  return { places, placeDetailsRequests, exclusions };
 }
 
 async function getCachedPlaceDetails(placeId: string, apiKey: string): Promise<GooglePlaceDetails> {
@@ -425,11 +451,45 @@ function diversifyStoredRows(rows: GoogleCuratedPlaceRow[]): GoogleCuratedPlaceR
   return diversifiedRows;
 }
 
-function isRelevantGooglePlaceMatch(row: GoogleCuratedPlaceRow, details: GooglePlaceDetails): boolean {
-  return isRelevantGooglePlaceCandidate({
+function toMappingExclusion(
+  row: GoogleCuratedPlaceRow,
+  reason: GoogleCuratedPlaceMappingExclusionReason,
+  details?: GooglePlaceDetails,
+): GoogleCuratedPlaceMappingExclusion {
+  return {
+    reason,
+    placeId: row.google_place_id,
     seedName: row.seed_name,
-    proxyType: row.proxy_type,
-    placeName: details.displayName,
-    types: details.types,
-  });
+    resolvedGoogleName: details?.displayName ?? "Google Details unavailable",
+    googleTypes: details?.types ?? [reason],
+    highway: row.highway_name,
+    locality: row.route_context ?? row.region,
+    cleanlinessTier: row.cleanliness_tier,
+    sourceCategory: row.source_category,
+  };
+}
+
+function toMappingDiagnostics(input: {
+  placeDetailsRequests: number;
+  places: HighwayStop[];
+  exclusions: GoogleCuratedPlaceMappingExclusion[];
+}) {
+  return {
+    attemptedPlaceDetails: input.placeDetailsRequests,
+    mappedPlaces: input.places.length,
+    excludedPlaces: input.exclusions.length,
+    excludedByReason: countBy(input.exclusions, (exclusion) => exclusion.reason),
+    excludedSamples: input.exclusions.slice(0, 25),
+  };
+}
+
+function countBy<T>(items: T[], keyForItem: (item: T) => string): Record<string, number> {
+  const counts: Record<string, number> = {};
+
+  for (const item of items) {
+    const key = keyForItem(item);
+    counts[key] = (counts[key] ?? 0) + 1;
+  }
+
+  return counts;
 }

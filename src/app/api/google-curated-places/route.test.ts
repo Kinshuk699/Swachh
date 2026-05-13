@@ -251,6 +251,94 @@ describe("GET /api/google-curated-places", () => {
     expect(body.placeDetailsRequests).toBe(2);
     expect(body.places).toHaveLength(1);
     expect(body.places[0].placeId).toBe("lavato-place-id");
+    expect(body.mappingDiagnostics.excludedByReason).toEqual({ name_type_mismatch: 1 });
+    expect(body.mappingDiagnostics.excludedSamples[0]).toMatchObject({
+      placeId: "bad-cube-place-id",
+      reason: "name_type_mismatch",
+      resolvedGoogleName: "M Cube Practical Classes",
+      seedName: "Cube Stop",
+    });
+  });
+
+  it("quarantines road-like Google Details results instead of mapping them as restroom stops", async () => {
+    process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
+    process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role-key";
+    process.env.GOOGLE_MAPS_SERVER_API_KEY = "server-key";
+    mockSupabaseRows([
+      {
+        google_place_id: "path-recharge-route-id",
+        seed_name: "PATH Recharge",
+        region: "India",
+        proxy_type: "wayside_amenity",
+        cleanliness_tier: "tier_1",
+        source_category: "official_wayside_amenity",
+        source_evidence: "Mall-like wayside amenities with EV charging",
+        highway_name: "NH-320G",
+        route_context: "Hat Gamaria - Jagannathpur Road.",
+        restroom_confidence: 0.88,
+        distance_from_highway_meters: 72,
+        local_notes: "Mall-like wayside amenities with EV charging",
+        verification_status: "likely_clean",
+      },
+      {
+        google_place_id: "path-recharge-stop-id",
+        seed_name: "PATH Recharge",
+        region: "India",
+        proxy_type: "wayside_amenity",
+        cleanliness_tier: "tier_1",
+        source_category: "official_wayside_amenity",
+        source_evidence: "Mall-like wayside amenities with EV charging",
+        highway_name: "Eastern Peripheral Expressway",
+        route_context: "Delhi NCR bypass",
+        restroom_confidence: 0.88,
+        distance_from_highway_meters: 120,
+        local_notes: "Mall-like wayside amenities with EV charging",
+        verification_status: "likely_clean",
+      },
+    ]);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL | Request) => {
+        const url = String(input);
+
+        return new Response(
+          JSON.stringify(
+            url.includes("path-recharge-route-id")
+              ? {
+                  id: "path-recharge-route-id",
+                  displayName: { text: "National Highway 320G" },
+                  location: { latitude: 22.1, longitude: 85.8 },
+                  types: ["route"],
+                }
+              : {
+                  id: "path-recharge-stop-id",
+                  displayName: { text: "PATH Recharge EV Hub" },
+                  location: { latitude: 28.54, longitude: 77.52 },
+                  types: ["rest_stop", "point_of_interest", "establishment"],
+                },
+          ),
+          { status: 200 },
+        );
+      }),
+    );
+    const { GET } = await import("./route");
+
+    const response = await GET(new Request("http://localhost/api/google-curated-places?visibility=all_found&details=google&limit=2"));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.places.map((place: { placeId: string }) => place.placeId)).toEqual(["path-recharge-stop-id"]);
+    expect(body.mappingDiagnostics).toMatchObject({
+      mappedPlaces: 1,
+      excludedPlaces: 1,
+      excludedByReason: { road_object_quarantine: 1 },
+    });
+    expect(body.mappingDiagnostics.excludedSamples[0]).toMatchObject({
+      placeId: "path-recharge-route-id",
+      reason: "road_object_quarantine",
+      resolvedGoogleName: "National Highway 320G",
+      seedName: "PATH Recharge",
+    });
   });
 
   it("backfills from later stored rows when details validation rejects early candidates", async () => {
