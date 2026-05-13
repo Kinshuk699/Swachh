@@ -48,7 +48,7 @@ describe("MapCanvas", () => {
     expect(screen.queryByRole("img", { name: /swachh national highway atlas/i })).toBeNull();
     expect(screen.getByTestId("google-map").getAttribute("data-has-styles")).toBe("true");
     await waitFor(() => expect(screen.getByText(/highway stops/i)).toBeTruthy());
-    expect(fetch).toHaveBeenCalledWith("/api/google-curated-places?visibility=all_found&details=google&limit=1500");
+    expect(fetch).toHaveBeenCalledWith("/api/google-curated-places?visibility=all_found&details=stored&limit=1500");
   });
 
   it("loads all found stops and cached National Highways for the map atlas", async () => {
@@ -81,7 +81,8 @@ describe("MapCanvas", () => {
         return new Response(
           JSON.stringify({
             visibility: "all_found",
-            places: [
+            places: [],
+            candidates: [
               {
                 id: "google-tier-three",
                 name: "Village Food Courts Kamat Upachar",
@@ -109,9 +110,8 @@ describe("MapCanvas", () => {
                 googlePlaceName: "Village Food Courts Kamat Upachar",
               },
             ],
-            candidates: [],
             storedRowsRead: 1,
-            placeDetailsRequests: 1,
+            placeDetailsRequests: 0,
             textSearchRequests: 0,
             capped: false,
           }),
@@ -122,7 +122,7 @@ describe("MapCanvas", () => {
 
     render(<MapCanvas stops={[]} selectedStopId="" onSelectStop={() => {}} />);
 
-    await waitFor(() => expect(fetch).toHaveBeenCalledWith("/api/google-curated-places?visibility=all_found&details=google&limit=1500"));
+    await waitFor(() => expect(fetch).toHaveBeenCalledWith("/api/google-curated-places?visibility=all_found&details=stored&limit=1500"));
     expect(fetch).toHaveBeenCalledWith("/api/highways/national");
     expect(await screen.findByText("NH-44")).toBeTruthy();
     expect(screen.getByText("© OpenStreetMap contributors")).toBeTruthy();
@@ -130,7 +130,7 @@ describe("MapCanvas", () => {
     fireEvent.click(screen.getByText("NH-44").closest("button")!);
     expect(screen.getByText("Village Food Courts Kamat Upachar")).toBeTruthy();
     expect(screen.getByText(/Text Search 0/i)).toBeTruthy();
-    expect(screen.getByText(/Details 1/i)).toBeTruthy();
+    expect(screen.getByText(/Details 0/i)).toBeTruthy();
   });
 
   it("dims every other National Highway when one highway is selected", async () => {

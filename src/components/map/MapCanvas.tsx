@@ -138,7 +138,7 @@ export function MapCanvas({ stops, routePolyline, onSelectStop }: MapCanvasProps
     let cancelled = false;
     setCuratedLoading(true);
 
-    fetch(`/api/google-curated-places?visibility=all_found&details=google&limit=${storedCuratedMapLimit}`)
+    fetch(`/api/google-curated-places?visibility=all_found&details=stored&limit=${storedCuratedMapLimit}`)
       .then((response) => (response.ok ? response.json() : null))
       .then((body: CuratedPlacesResponse | null) => {
         if (cancelled || !body) {
