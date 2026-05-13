@@ -113,7 +113,7 @@ export function recommendManualReviewTier(input: ManualReviewTierAuditInput): Ma
     return recommendation({
       typeSignal,
       brandSignal: "generic_or_unclear_brand",
-      recommendedTier: "tier_4",
+      recommendedTier: "tier_3",
       recommendedSourceCategory: "generic_candidate",
       recommendedAction: "remove",
       recommendedVerificationStatus: "rejected",
@@ -126,7 +126,7 @@ export function recommendManualReviewTier(input: ManualReviewTierAuditInput): Ma
     return recommendation({
       typeSignal,
       brandSignal: "generic_or_unclear_brand",
-      recommendedTier: "tier_4",
+      recommendedTier: "tier_3",
       recommendedSourceCategory: "dhaba_candidate",
       recommendedAction: "keep_candidate_only",
       recommendedVerificationStatus: "matched",
@@ -166,7 +166,7 @@ export function recommendManualReviewTier(input: ManualReviewTierAuditInput): Ma
       return recommendation({
         typeSignal,
         brandSignal: "premium_fuel_brand_match",
-        recommendedTier: "tier_2",
+        recommendedTier: "tier_1",
         recommendedSourceCategory: "premium_fuel_program",
         recommendedAction: "keep_on_map",
         recommendedVerificationStatus: "likely_clean",
@@ -178,12 +178,12 @@ export function recommendManualReviewTier(input: ManualReviewTierAuditInput): Ma
     return recommendation({
       typeSignal,
       brandSignal: "generic_fuel_from_premium_seed",
-      recommendedTier: "tier_4",
+      recommendedTier: "tier_3",
       recommendedSourceCategory: "generic_candidate",
-      recommendedAction: "keep_candidate_only",
+      recommendedAction: "keep_on_map",
       recommendedVerificationStatus: "matched",
-      recommendedLabel: "Needs verification",
-      whyRecommended: "Google types identify a fuel station, but the resolved name looks like generic fuel rather than the premium/highway format promised by the seed.",
+      recommendedLabel: "Fuel/restroom fallback",
+      whyRecommended: "Google types identify a generic fuel station; this is useful as a Tier 3 restroom fallback but should not inherit a premium fuel label.",
     });
   }
 
@@ -191,7 +191,7 @@ export function recommendManualReviewTier(input: ManualReviewTierAuditInput): Ma
     return recommendation({
       typeSignal,
       brandSignal: "organized_food_brand_match",
-      recommendedTier: "tier_3",
+      recommendedTier: "tier_2",
       recommendedSourceCategory: "organized_restaurant",
       recommendedAction: "keep_on_map",
       recommendedVerificationStatus: "matched",
@@ -204,7 +204,7 @@ export function recommendManualReviewTier(input: ManualReviewTierAuditInput): Ma
     return recommendation({
       typeSignal,
       brandSignal: "generic_or_unclear_brand",
-      recommendedTier: "tier_4",
+      recommendedTier: "tier_3",
       recommendedSourceCategory: "generic_candidate",
       recommendedAction: "keep_candidate_only",
       recommendedVerificationStatus: "matched",
@@ -217,7 +217,7 @@ export function recommendManualReviewTier(input: ManualReviewTierAuditInput): Ma
     return recommendation({
       typeSignal,
       brandSignal: "generic_or_unclear_brand",
-      recommendedTier: "tier_4",
+      recommendedTier: "tier_3",
       recommendedSourceCategory: "generic_candidate",
       recommendedAction: "keep_candidate_only",
       recommendedVerificationStatus: "matched",
@@ -229,7 +229,7 @@ export function recommendManualReviewTier(input: ManualReviewTierAuditInput): Ma
   return recommendation({
     typeSignal,
     brandSignal: "generic_or_unclear_brand",
-    recommendedTier: "tier_4",
+    recommendedTier: "tier_3",
     recommendedSourceCategory: "generic_candidate",
     recommendedAction: "remove",
     recommendedVerificationStatus: "rejected",

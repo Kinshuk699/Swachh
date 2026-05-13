@@ -1,8 +1,27 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { googleTextSearchFieldMask, type GoogleTextSearchJob } from "@/lib/discovery/highway-place-discovery";
 
 import { searchTextPlaces } from "./places";
+
+const baseJob: GoogleTextSearchJob = {
+  id: "job",
+  sourceKind: "curated_stop",
+  textQuery: "Lavato NH-44 Krishnagiri India",
+  seedName: "Lavato",
+  expectedHighwayContext: "NH-44",
+  expectedRouteContext: "Krishnagiri toll plaza",
+  region: "South India",
+  proxyType: "premium_lavatory",
+  confidence: 0.95,
+  pageSize: 5,
+  regionCode: "IN",
+  fieldMask: googleTextSearchFieldMask,
+};
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 describe("searchTextPlaces", () => {
   it("calls Google Places Text Search New with a cost-controlled field mask", async () => {
@@ -75,22 +94,26 @@ describe("searchTextPlaces", () => {
 
     await expect(
       searchTextPlaces(
-        {
-          id: "job",
-          sourceKind: "curated_stop",
-          textQuery: "Lavato NH-44 Krishnagiri India",
-          seedName: "Lavato",
-          expectedHighwayContext: "NH-44",
-          expectedRouteContext: "Krishnagiri toll plaza",
-          region: "South India",
-          proxyType: "premium_lavatory",
-          confidence: 0.95,
-          pageSize: 5,
-          regionCode: "IN",
-          fieldMask: googleTextSearchFieldMask,
-        },
+        baseJob,
         { apiKey: "server-key", fetcher },
       ),
     ).rejects.toThrow("Google Places Text Search failed for job");
+  });
+
+  it("times out stalled Google Places Text Search requests", async () => {
+    vi.useFakeTimers();
+    const fetcher = vi.fn(
+      (_url: string | URL | Request, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          const signal = init?.signal as AbortSignal | undefined;
+          signal?.addEventListener("abort", () => reject(new DOMException("The operation was aborted.", "AbortError")));
+        }),
+    );
+
+    const request = searchTextPlaces(baseJob, { apiKey: "server-key", fetcher, timeoutMs: 10 });
+    const assertion = expect(request).rejects.toThrow("Google Places Text Search timed out for job job after 10ms");
+    await vi.advanceTimersByTimeAsync(10);
+
+    await assertion;
   });
 });

@@ -6,6 +6,7 @@ import {
   filterAcceptedGoogleCuratedPlaceRowsForUpsert,
   filterGoogleCuratedPlaceJobs,
   planGoogleCuratedPlaceDiscovery,
+  shouldAbortGoogleCuratedPlaceImport,
   toGoogleCuratedPlaceRows,
   toRejectedGoogleCuratedPlaceRows,
 } from "./google-curated-place-import";
@@ -143,6 +144,66 @@ describe("discoverGoogleCuratedPlaces", () => {
     expect(searchedJobIds).toEqual(["second"]);
   });
 
+  it("limits concurrent Google searches during large discovery runs", async () => {
+    let activeSearches = 0;
+    let maxActiveSearches = 0;
+    const result = await discoverGoogleCuratedPlaces({
+      apiKey: "server-key",
+      corridors: [corridor],
+      maxConcurrentSearches: 2,
+      jobs: [job({ id: "first" }), job({ id: "second" }), job({ id: "third" }), job({ id: "fourth" })],
+      searchTextPlaces: async () => {
+        activeSearches += 1;
+        maxActiveSearches = Math.max(maxActiveSearches, activeSearches);
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        activeSearches -= 1;
+        return { places: [] };
+      },
+    });
+
+    expect(result).toMatchObject({ searchedJobs: 4, failedJobs: 0 });
+    expect(maxActiveSearches).toBe(2);
+  });
+
+  it("spaces Google searches when a request throttle is configured", async () => {
+    const searchStartedAt: number[] = [];
+    let now = 0;
+    const result = await discoverGoogleCuratedPlaces({
+      apiKey: "server-key",
+      corridors: [corridor],
+      maxConcurrentSearches: 2,
+      requestSpacingMs: 100,
+      now: () => now,
+      delay: async (milliseconds) => {
+        await Promise.resolve();
+        now += milliseconds;
+      },
+      jobs: [job({ id: "first" }), job({ id: "second" }), job({ id: "third" })],
+      searchTextPlaces: async () => {
+        searchStartedAt.push(now);
+        return { places: [] };
+      },
+    });
+
+    expect(result).toMatchObject({ searchedJobs: 3, failedJobs: 0 });
+    expect(searchStartedAt).toEqual([0, 100, 200]);
+  });
+
+  it("stops discovery early when a chunk has a high failure rate", async () => {
+    const result = await discoverGoogleCuratedPlaces({
+      apiKey: "server-key",
+      corridors: [corridor],
+      maxFailureRate: 0.5,
+      minimumFailureRateSampleSize: 10,
+      jobs: Array.from({ length: 20 }, (_, index) => job({ id: `job-${index + 1}` })),
+      searchTextPlaces: async () => {
+        throw new Error("429 RATE_LIMIT_EXCEEDED");
+      },
+    });
+
+    expect(result).toMatchObject({ searchedJobs: 10, failedJobs: 10, abortedForFailureRate: true });
+  });
+
   it("aborts before Google calls when planned text searches exceed the request cap", async () => {
     const searchedJobIds: string[] = [];
 
@@ -212,6 +273,14 @@ describe("filterGoogleCuratedPlaceJobs", () => {
     expect(filterGoogleCuratedPlaceJobs(jobs, { seedNames: ["highway nest mini"] }).map((googleJob) => googleJob.id)).toEqual([
       "tier-1-highway-nest",
     ]);
+  });
+});
+
+describe("shouldAbortGoogleCuratedPlaceImport", () => {
+  it("aborts noisy import chunks only after enough calls have failed", () => {
+    expect(shouldAbortGoogleCuratedPlaceImport({ searchedJobs: 500, failedJobs: 500, maxFailureRate: 0.5 })).toBe(true);
+    expect(shouldAbortGoogleCuratedPlaceImport({ searchedJobs: 500, failedJobs: 17, maxFailureRate: 0.5 })).toBe(false);
+    expect(shouldAbortGoogleCuratedPlaceImport({ searchedJobs: 10, failedJobs: 10, maxFailureRate: 0.5 })).toBe(false);
   });
 });
 

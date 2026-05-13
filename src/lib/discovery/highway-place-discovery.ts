@@ -66,6 +66,7 @@ export type HighwaySearchCorridor = {
   region: string;
   anchors: HighwaySearchAnchor[];
   polyline: LatLng[];
+  polylines?: LatLng[][];
 };
 
 export type GoogleTextSearchJob = {
@@ -216,7 +217,7 @@ export function partitionHighwayPlaceMatches(input: {
       continue;
     }
 
-    const distanceFromHighwayMeters = Math.round(distanceToPolylineMeters(place.location, input.corridor.polyline));
+    const distanceFromHighwayMeters = Math.round(distanceToCorridorMeters(place.location, input.corridor));
 
     if (distanceFromHighwayMeters > input.maxDiversionMeters) {
       continue;
@@ -334,22 +335,21 @@ export function classifyCleanToiletCandidate(input: {
       "shell select",
       "shell cafe",
       "wild bean cafe",
-      "reliance",
-      "reliance petroleum",
-      "reliance bp mobility",
-      "nayara",
-      "nayara energy",
     ])
   ) {
-    return { cleanlinessTier: "tier_2", sourceCategory: "premium_fuel_program", sourceEvidence: evidence };
+    return { cleanlinessTier: "tier_1", sourceCategory: "premium_fuel_program", sourceEvidence: evidence };
   }
 
   if (input.proxyType === "food_plaza") {
-    return { cleanlinessTier: "tier_3", sourceCategory: "food_plaza", sourceEvidence: evidence };
+    return { cleanlinessTier: "tier_2", sourceCategory: "food_plaza", sourceEvidence: evidence };
   }
 
   if (input.proxyType === "qsr" || input.proxyType === "restaurant_proxy") {
-    return { cleanlinessTier: "tier_3", sourceCategory: "organized_restaurant", sourceEvidence: evidence };
+    return { cleanlinessTier: "tier_2", sourceCategory: "organized_restaurant", sourceEvidence: evidence };
+  }
+
+  if (input.proxyType === "fuel_station") {
+    return { cleanlinessTier: "tier_3", sourceCategory: "generic_candidate", sourceEvidence: evidence };
   }
 
   if (input.proxyType === "dhaba_proxy") {
@@ -453,6 +453,10 @@ export function isRelevantGooglePlaceCandidate(input: {
   placeName: string | undefined;
   types: string[] | undefined;
 }): boolean {
+  if (isGenericFuelSearchSeed(input.seedName, input.proxyType)) {
+    return hasFuelStationGoogleType(input.types);
+  }
+
   if (!isRelevantGooglePlaceNameMatch(input.seedName, input.placeName)) {
     return false;
   }
@@ -486,6 +490,16 @@ function hasFuelStationSignal(tokens: string[]): boolean {
 
 function hasFuelStationGoogleType(types: string[] | undefined): boolean {
   return Boolean(types?.some((type) => fuelStationGoogleTypes.has(type)));
+}
+
+function isGenericFuelSearchSeed(seedName: string, proxyType: ProxyType): boolean {
+  if (proxyType !== "fuel_station") {
+    return false;
+  }
+
+  const normalizedSeedName = normalizeForPlaceMatch(seedName);
+
+  return normalizedSeedName === "petrolpump" || normalizedSeedName === "fuelstation" || normalizedSeedName === "gasstation";
 }
 
 function isStrictFuelOperatorSeed(seedName: string): boolean {
@@ -542,6 +556,15 @@ function distanceToPolylineMeters(point: LatLng, polyline: LatLng[]): number {
   }
 
   return minimumDistance;
+}
+
+function distanceToCorridorMeters(point: LatLng, corridor: HighwaySearchCorridor): number {
+  const polylines = corridor.polylines?.length ? corridor.polylines : [corridor.polyline];
+
+  return polylines.reduce(
+    (minimumDistance, polyline) => Math.min(minimumDistance, distanceToPolylineMeters(point, polyline)),
+    Number.POSITIVE_INFINITY,
+  );
 }
 
 function distanceToSegmentMeters(point: LatLng, start: LatLng, end: LatLng): number {

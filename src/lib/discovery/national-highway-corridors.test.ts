@@ -4,12 +4,12 @@ import type { NationalHighwayOverlay } from "../highways/national-highways";
 import { buildNationalHighwaySearchCorridors } from "./national-highway-corridors";
 
 describe("buildNationalHighwaySearchCorridors", () => {
-  it("creates one discovery corridor per imported National Highway ref by default", () => {
+  it("tiles imported National Highway refs by route distance instead of only searching the midpoint", () => {
     const corridors = buildNationalHighwaySearchCorridors([
       highway({
         id: "osm-nh-44",
         ref: "NH-44",
-        geometry: { type: "LineString", coordinates: [[77.59, 13.05], [77.7, 13.2], [77.6, 13.65]] },
+        geometry: { type: "LineString", coordinates: [[77, 13], [77.46, 13], [77.92, 13], [78.38, 13]] },
       }),
       highway({
         id: "osm-nh-19",
@@ -31,14 +31,42 @@ describe("buildNationalHighwaySearchCorridors", () => {
       highwayName: "NH-44",
       routeContext: "National Highway 44",
       region: "India",
-      anchors: [{ latitude: 13.2, longitude: 77.7, radiusMeters: 30_000 }],
     });
+    expect(corridors[0].anchors).toHaveLength(3);
+    expect(corridors[0].anchors.every((anchor) => anchor.radiusMeters === 30_000)).toBe(true);
+    expect(corridors[0].anchors.map((anchor) => anchor.longitude)).toEqual(
+      expect.arrayContaining([
+        expect.closeTo(77.23, 1),
+        expect.closeTo(77.69, 1),
+        expect.closeTo(78.15, 1),
+      ]),
+    );
     expect(corridors[1]).toMatchObject({
       id: "osm-nh-19",
       highwayName: "NH-19",
       routeContext: "National Highway 19",
-      anchors: [{ latitude: 23.77, longitude: 86.42, radiusMeters: 30_000 }],
     });
+    expect(corridors[1].anchors.length).toBeGreaterThan(1);
+    expect(corridors[1].polylines).toHaveLength(2);
+  });
+
+  it("does not create one search anchor for every short OSM fragment", () => {
+    const corridors = buildNationalHighwaySearchCorridors([
+      highway({
+        geometry: {
+          type: "MultiLineString",
+          coordinates: [
+            [[77, 13], [77.05, 13]],
+            [[77.05, 13], [77.1, 13]],
+            [[77.1, 13], [77.15, 13]],
+            [[77.15, 13], [77.2, 13]],
+            [[77.2, 13], [77.25, 13]],
+          ],
+        },
+      }),
+    ]);
+
+    expect(corridors[0].anchors).toHaveLength(1);
   });
 });
 

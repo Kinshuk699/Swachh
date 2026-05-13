@@ -7,6 +7,7 @@ import {
   discoverGoogleCuratedPlaces,
   filterAcceptedGoogleCuratedPlaceRowsForUpsert,
   planGoogleCuratedPlaceDiscovery,
+  shouldAbortGoogleCuratedPlaceImport,
   toGoogleCuratedPlaceRows,
   toRejectedGoogleCuratedPlaceRows,
   type ExistingGoogleCuratedPlaceRow,
@@ -28,9 +29,14 @@ type ImportArgs = {
   cleanlinessTiers?: CleanlinessTier[];
   maxTextSearchRequests?: number;
   maxDiversionMeters?: number;
+  concurrency?: number;
+  requestSpacingMs?: number;
+  maxFailureRate?: number;
 };
 
 const defaultTextSearchMonthlyFreeCap = 35_000;
+const defaultMaxFailureRate = 0.5;
+const defaultFailureRateMinimumSearchedJobs = 10;
 
 loadEnvFile(".env.local");
 
@@ -72,6 +78,7 @@ if (args.planOnly) {
 const googleApiKey = requireEnv("GOOGLE_MAPS_SERVER_API_KEY");
 const supabaseUrl = requireEnv("NEXT_PUBLIC_SUPABASE_URL");
 const serviceRoleKey = requireEnv("SUPABASE_SERVICE_ROLE_KEY");
+const maxFailureRate = args.maxFailureRate ?? defaultMaxFailureRate;
 
 const discovery = await discoverGoogleCuratedPlaces({
   apiKey: googleApiKey,
@@ -82,6 +89,10 @@ const discovery = await discoverGoogleCuratedPlaces({
   cleanlinessTiers: args.cleanlinessTiers,
   maxTextSearchRequests,
   maxDiversionMeters: args.maxDiversionMeters,
+  maxConcurrentSearches: args.concurrency,
+  requestSpacingMs: args.requestSpacingMs,
+  maxFailureRate,
+  minimumFailureRateSampleSize: defaultFailureRateMinimumSearchedJobs,
   onProgress: ({ searchedJobs, totalJobs, matches, failures }) => {
     if (searchedJobs === 1 || searchedJobs % 100 === 0 || searchedJobs === totalJobs) {
       console.log(`searched=${searchedJobs}/${totalJobs} raw_matches=${matches} failures=${failures}`);
@@ -91,6 +102,12 @@ const discovery = await discoverGoogleCuratedPlaces({
 
 const rows = toGoogleCuratedPlaceRows(discovery.places);
 const rejectedRows = toRejectedGoogleCuratedPlaceRows(discovery.rejectedPlaces);
+const abortForFailureRate = discovery.abortedForFailureRate || shouldAbortGoogleCuratedPlaceImport({
+  searchedJobs: discovery.searchedJobs,
+  failedJobs: discovery.failedJobs,
+  maxFailureRate,
+  minimumSearchedJobs: defaultFailureRateMinimumSearchedJobs,
+});
 
 console.log(
   JSON.stringify(
@@ -98,11 +115,18 @@ console.log(
       dryRun: args.dryRun,
       corridorSource: args.corridorSource,
       maxTextSearchRequests,
+      concurrency: args.concurrency ?? 1,
+      requestSpacingMs: args.requestSpacingMs ?? 0,
       maxDiversionMeters: args.maxDiversionMeters ?? defaultMaxHighwayDiversionMeters,
       totalJobs: discovery.totalJobs,
       searchedJobs: discovery.searchedJobs,
       missingCorridorJobs: discovery.missingCorridorJobs,
       failedJobs: discovery.failedJobs,
+      failureRate: discovery.searchedJobs > 0 ? discovery.failedJobs / discovery.searchedJobs : 0,
+      maxFailureRate,
+      minimumFailureRateSampleSize: defaultFailureRateMinimumSearchedJobs,
+      abortForFailureRate,
+      failureSamples: discovery.failures.slice(0, 5),
       rawMatches: discovery.rawMatches,
       rawRejectedMatches: discovery.rawRejectedMatches,
       uniquePlaces: discovery.places.length,
@@ -158,7 +182,11 @@ for (const batch of chunk(rejectedRows, 250)) {
   console.log(`rejected_rows_attempted=${rejectedRowsAttempted}/${rejectedRows.length}`);
 }
 
-console.log(JSON.stringify({ ok: true, upsertedRows, skippedAcceptedRows, rejectedRowsAttempted }, null, 2));
+console.log(JSON.stringify({ ok: !abortForFailureRate, upsertedRows, skippedAcceptedRows, rejectedRowsAttempted }, null, 2));
+
+if (abortForFailureRate) {
+  process.exit(1);
+}
 
 function parseArgs(argv: string[]): ImportArgs {
   const dryRun = argv.includes("--dry-run");
@@ -170,6 +198,9 @@ function parseArgs(argv: string[]): ImportArgs {
   const tierArgs = argv.filter((arg) => arg.startsWith("--tier="));
   const maxTextSearchRequestsArg = argv.find((arg) => arg.startsWith("--max-text-search-requests="));
   const maxDiversionMetersArg = argv.find((arg) => arg.startsWith("--max-diversion-meters="));
+  const concurrencyArg = argv.find((arg) => arg.startsWith("--concurrency="));
+  const requestSpacingMsArg = argv.find((arg) => arg.startsWith("--request-spacing-ms="));
+  const maxFailureRateArg = argv.find((arg) => arg.startsWith("--max-failure-rate="));
   const jobOffset = jobOffsetArg ? Number(jobOffsetArg.slice("--job-offset=".length)) : undefined;
   const jobLimit = jobLimitArg ? Number(jobLimitArg.slice("--job-limit=".length)) : undefined;
   const seedNames = parseCommaSeparatedArgs(seedArgs, "--seed=");
@@ -180,6 +211,9 @@ function parseArgs(argv: string[]): ImportArgs {
   const maxDiversionMeters = maxDiversionMetersArg
     ? Number(maxDiversionMetersArg.slice("--max-diversion-meters=".length))
     : undefined;
+  const concurrency = concurrencyArg ? Number(concurrencyArg.slice("--concurrency=".length)) : undefined;
+  const requestSpacingMs = requestSpacingMsArg ? Number(requestSpacingMsArg.slice("--request-spacing-ms=".length)) : undefined;
+  const maxFailureRate = maxFailureRateArg ? Number(maxFailureRateArg.slice("--max-failure-rate=".length)) : undefined;
   const corridorSource = corridorSourceArg?.slice("--corridor-source=".length) ?? "seeded";
 
   if (corridorSource !== "seeded" && corridorSource !== "national-highways") {
@@ -205,7 +239,19 @@ function parseArgs(argv: string[]): ImportArgs {
     throw new Error("--max-diversion-meters must be a positive integer.");
   }
 
-  return { dryRun, planOnly, corridorSource, jobOffset, jobLimit, seedNames, cleanlinessTiers, maxTextSearchRequests, maxDiversionMeters };
+  if (typeof concurrency === "number" && (!Number.isInteger(concurrency) || concurrency <= 0)) {
+    throw new Error("--concurrency must be a positive integer.");
+  }
+
+  if (typeof requestSpacingMs === "number" && (!Number.isInteger(requestSpacingMs) || requestSpacingMs < 0)) {
+    throw new Error("--request-spacing-ms must be a non-negative integer.");
+  }
+
+  if (typeof maxFailureRate === "number" && (!(maxFailureRate > 0) || maxFailureRate > 1)) {
+    throw new Error("--max-failure-rate must be greater than 0 and less than or equal to 1.");
+  }
+
+  return { dryRun, planOnly, corridorSource, jobOffset, jobLimit, seedNames, cleanlinessTiers, maxTextSearchRequests, maxDiversionMeters, concurrency, requestSpacingMs, maxFailureRate };
 }
 
 function buildDiscoveryCorridors(corridorSource: ImportArgs["corridorSource"]): HighwaySearchCorridor[] | undefined {

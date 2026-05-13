@@ -45,7 +45,7 @@ describe("buildHighwayPlacesSearchJobs", () => {
       regionCode: "IN",
       pageSize: 10,
       fieldMask: googleTextSearchFieldMask,
-      cleanlinessTier: "tier_2",
+      cleanlinessTier: "tier_1",
       sourceCategory: "premium_fuel_program",
       sourceEvidence: "Clean fuel station restroom proxy",
       locationBias: {
@@ -128,6 +128,40 @@ describe("buildHighwayPlacesSearchJobs", () => {
       expectedHighwayContext: "NH-44",
       expectedRouteContext: "Krishnagiri toll plaza",
       confidence: 0.95,
+    });
+  });
+
+  it("classifies generic fuel searches as tier 3 fallback stops", () => {
+    const jobs = buildHighwayPlacesSearchJobs({
+      proxyBrands: [
+        {
+          brandName: "Petrol Pump",
+          region: "Pan-India",
+          proxyType: "fuel_station",
+          defaultConfidence: 0.62,
+          notes: "Generic highway fuel fallback for restroom availability",
+        },
+      ],
+      curatedStopCandidates: [],
+      corridors: [
+        {
+          id: "nh44-krishnagiri",
+          highwayName: "NH-44",
+          routeContext: "Krishnagiri toll plaza",
+          region: "South India",
+          anchors: [{ latitude: 12.5186, longitude: 78.2137, radiusMeters: 30_000 }],
+          polyline: [
+            { latitude: 12.48, longitude: 78.18 },
+            { latitude: 12.56, longitude: 78.25 },
+          ],
+        },
+      ],
+    });
+
+    expect(jobs[0]).toMatchObject({
+      seedName: "Petrol Pump",
+      cleanlinessTier: "tier_3",
+      sourceCategory: "generic_candidate",
     });
   });
 });
@@ -249,6 +283,17 @@ describe("filterHighwayPlaceMatches", () => {
 });
 
 describe("isRelevantGooglePlaceCandidate", () => {
+  it("accepts generic fuel search results by Google gas station type", () => {
+    expect(
+      isRelevantGooglePlaceCandidate({
+        seedName: "Petrol Pump",
+        proxyType: "fuel_station",
+        placeName: "IndianOil",
+        types: ["gas_station", "point_of_interest", "establishment"],
+      }),
+    ).toBe(true);
+  });
+
   it("keeps trusted seed families broad enough for manual review", () => {
     expect(
       isRelevantGooglePlaceCandidate({
@@ -684,15 +729,17 @@ describe("seed catalog", () => {
     );
   });
 
-  it("classifies branded fuel operators as Tier 2 fuel stops", () => {
+  it("classifies premium fuel programs as Tier 1 and generic fuel operators as Tier 3 fallbacks", () => {
     expect(
       ["Reliance", "Nayara Energy", "HPCL Focus Outlet", "Club HP"].map((seedName) =>
         classifyCleanToiletCandidate({ seedName, proxyType: "fuel_station" }),
       ),
     ).toEqual(
       expect.arrayContaining([
-        { cleanlinessTier: "tier_2", sourceCategory: "premium_fuel_program", sourceEvidence: "Reliance" },
-        { cleanlinessTier: "tier_2", sourceCategory: "premium_fuel_program", sourceEvidence: "Nayara Energy" },
+        { cleanlinessTier: "tier_3", sourceCategory: "generic_candidate", sourceEvidence: "Reliance" },
+        { cleanlinessTier: "tier_3", sourceCategory: "generic_candidate", sourceEvidence: "Nayara Energy" },
+        { cleanlinessTier: "tier_1", sourceCategory: "premium_fuel_program", sourceEvidence: "HPCL Focus Outlet" },
+        { cleanlinessTier: "tier_1", sourceCategory: "premium_fuel_program", sourceEvidence: "Club HP" },
       ]),
     );
   });

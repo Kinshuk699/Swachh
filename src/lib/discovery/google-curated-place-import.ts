@@ -47,6 +47,7 @@ export type GoogleCuratedPlaceDiscoverySummary = {
   searchedJobs: number;
   missingCorridorJobs: number;
   failedJobs: number;
+  abortedForFailureRate: boolean;
   rawMatches: number;
   rawRejectedMatches: number;
   places: DiscoveredHighwayPlace[];
@@ -69,6 +70,8 @@ type SearchTextPlaces = (
   job: GoogleTextSearchJob,
   options: { apiKey: string },
 ) => Promise<GoogleTextSearchResponse>;
+
+type Delay = (milliseconds: number) => Promise<void>;
 
 type GoogleCuratedPlaceDiscoveryPlanningInput = {
   jobs?: GoogleTextSearchJob[];
@@ -97,6 +100,12 @@ export async function discoverGoogleCuratedPlaces(input: {
   cleanlinessTiers?: CleanlinessTier[];
   maxTextSearchRequests?: number;
   maxDiversionMeters?: number;
+  maxConcurrentSearches?: number;
+  requestSpacingMs?: number;
+  maxFailureRate?: number;
+  minimumFailureRateSampleSize?: number;
+  now?: () => number;
+  delay?: Delay;
   searchTextPlaces?: SearchTextPlaces;
   onProgress?: (progress: { searchedJobs: number; totalJobs: number; matches: number; failures: number }) => void;
 }): Promise<GoogleCuratedPlaceDiscoverySummary> {
@@ -106,6 +115,12 @@ export async function discoverGoogleCuratedPlaces(input: {
   const discoveredPlaces: DiscoveredHighwayPlace[] = [];
   const rejectedPlaces: RejectedDiscoveredHighwayPlace[] = [];
   const failures: Array<{ jobId: string; message: string }> = [];
+  let abortedForFailureRate = false;
+  const waitForRequestSlot = createRequestStartScheduler({
+    requestSpacingMs: input.requestSpacingMs ?? 0,
+    now: input.now ?? Date.now,
+    delay: input.delay ?? defaultDelay,
+  });
 
   if (plan.textSearchCapExceeded) {
     throw new Error(
@@ -113,34 +128,59 @@ export async function discoverGoogleCuratedPlaces(input: {
     );
   }
 
+  const maxConcurrentSearches = normalizeMaxConcurrentSearches(input.maxConcurrentSearches);
+  let nextPlannedJobIndex = 0;
   let searchedJobs = 0;
   let missingCorridorJobs = 0;
 
-  for (const { job, corridor } of plannedJobs) {
+  await Promise.all(
+    Array.from({ length: Math.min(maxConcurrentSearches, plannedJobs.length) }, async () => {
+      while (!abortedForFailureRate && nextPlannedJobIndex < plannedJobs.length) {
+        const plannedJob = plannedJobs[nextPlannedJobIndex];
+        nextPlannedJobIndex += 1;
 
-    if (!corridor) {
-      missingCorridorJobs += 1;
-      continue;
-    }
+        if (!plannedJob.corridor) {
+          missingCorridorJobs += 1;
+          continue;
+        }
 
-    searchedJobs += 1;
+        try {
+          await waitForRequestSlot();
+          const response = await searchTextPlaces(plannedJob.job, { apiKey: input.apiKey });
+          const partitionedMatches = partitionHighwayPlaceMatches({
+            job: plannedJob.job,
+            corridor: plannedJob.corridor,
+            places: response.places,
+            maxDiversionMeters,
+          });
+          discoveredPlaces.push(...partitionedMatches.accepted);
+          rejectedPlaces.push(...partitionedMatches.rejected);
+        } catch (error) {
+          failures.push({ jobId: plannedJob.job.id, message: error instanceof Error ? error.message : "Unknown Google Places error" });
+        }
 
-    try {
-      const response = await searchTextPlaces(job, { apiKey: input.apiKey });
-      const partitionedMatches = partitionHighwayPlaceMatches({ job, corridor, places: response.places, maxDiversionMeters });
-      discoveredPlaces.push(...partitionedMatches.accepted);
-      rejectedPlaces.push(...partitionedMatches.rejected);
-    } catch (error) {
-      failures.push({ jobId: job.id, message: error instanceof Error ? error.message : "Unknown Google Places error" });
-    }
+        searchedJobs += 1;
+        if (
+          typeof input.maxFailureRate === "number" &&
+          shouldAbortGoogleCuratedPlaceImport({
+            searchedJobs,
+            failedJobs: failures.length,
+            maxFailureRate: input.maxFailureRate,
+            minimumSearchedJobs: input.minimumFailureRateSampleSize,
+          })
+        ) {
+          abortedForFailureRate = true;
+        }
 
-    input.onProgress?.({
-      searchedJobs,
-      totalJobs: jobs.length,
-      matches: discoveredPlaces.length,
-      failures: failures.length,
-    });
-  }
+        input.onProgress?.({
+          searchedJobs,
+          totalJobs: jobs.length,
+          matches: discoveredPlaces.length,
+          failures: failures.length,
+        });
+      }
+    }),
+  );
 
   const places = dedupeDiscoveredHighwayPlaces(discoveredPlaces);
   const acceptedPlaceIds = new Set(places.map((place) => place.placeId));
@@ -153,12 +193,56 @@ export async function discoverGoogleCuratedPlaces(input: {
     searchedJobs,
     missingCorridorJobs,
     failedJobs: failures.length,
+    abortedForFailureRate,
     rawMatches: discoveredPlaces.length,
     rawRejectedMatches: rejectedPlaces.length,
     places,
     rejectedPlaces: rejectedPlacesWithoutAcceptedDuplicates,
     failures,
   };
+}
+
+function createRequestStartScheduler(input: { requestSpacingMs: number; now: () => number; delay: Delay }): () => Promise<void> {
+  if (input.requestSpacingMs <= 0) {
+    return async () => {};
+  }
+
+  let nextRequestStartAt = input.now();
+  let queue = Promise.resolve();
+
+  return async () => {
+    const previous = queue;
+    let release: (() => void) | undefined;
+    queue = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+
+    await previous;
+
+    try {
+      const scheduledStartAt = Math.max(input.now(), nextRequestStartAt);
+      nextRequestStartAt = scheduledStartAt + input.requestSpacingMs;
+      const delayMs = scheduledStartAt - input.now();
+
+      if (delayMs > 0) {
+        await input.delay(delayMs);
+      }
+    } finally {
+      release?.();
+    }
+  };
+}
+
+function defaultDelay(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+function normalizeMaxConcurrentSearches(value: number | undefined): number {
+  if (typeof value !== "number") {
+    return 1;
+  }
+
+  return Math.max(1, Math.floor(value));
 }
 
 export function filterGoogleCuratedPlaceJobs(
@@ -174,6 +258,21 @@ export function filterGoogleCuratedPlaceJobs(
 
     return seedMatches && tierMatches;
   });
+}
+
+export function shouldAbortGoogleCuratedPlaceImport(input: {
+  searchedJobs: number;
+  failedJobs: number;
+  maxFailureRate: number;
+  minimumSearchedJobs?: number;
+}): boolean {
+  const minimumSearchedJobs = input.minimumSearchedJobs ?? 50;
+
+  if (input.searchedJobs < minimumSearchedJobs) {
+    return false;
+  }
+
+  return input.failedJobs / input.searchedJobs >= input.maxFailureRate;
 }
 
 export function toGoogleCuratedPlaceRows(
