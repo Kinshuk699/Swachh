@@ -14,7 +14,7 @@ describe("resolve-place-locations script", () => {
     const osmPath = join(tempDir, "osm.json");
     const overturePath = join(tempDir, "overture.json");
 
-    await writeFile(curatedPath, JSON.stringify([{ id: "curated-1", google_place_id: "google-place-1" }]));
+    await writeFile(curatedPath, JSON.stringify([{ id: "curated-1", seed_name: "Lavato Krishnagiri" }]));
     await writeFile(osmPath, JSON.stringify([]));
     await writeFile(overturePath, JSON.stringify([]));
 
@@ -27,11 +27,10 @@ describe("resolve-place-locations script", () => {
         `--curated=${curatedPath}`,
         `--osm=${osmPath}`,
         `--overture=${overturePath}`,
-        "--max-google-details-requests=5",
       ],
       {
         cwd: process.cwd(),
-        env: { ...process.env, GOOGLE_MAPS_SERVER_API_KEY: "", SUPABASE_SERVICE_ROLE_KEY: "" },
+        env: { ...process.env, SUPABASE_SERVICE_ROLE_KEY: "" },
       },
     );
 
@@ -40,7 +39,7 @@ describe("resolve-place-locations script", () => {
       curatedRows: 1,
       osmCandidates: 0,
       overtureCandidates: 0,
-      maxGoogleDetailsRequests: 5,
+      googleDetailsRequests: 0,
     });
   });
 });

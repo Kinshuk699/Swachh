@@ -12,7 +12,6 @@ type Args = {
   curatedPath: string;
   osmPath: string;
   overturePath: string;
-  maxGoogleDetailsRequests: number;
   writeSupabase: boolean;
 };
 
@@ -32,7 +31,7 @@ if (args.planOnly) {
         curatedRows: curatedPlaces.length,
         osmCandidates: osmCandidates.length,
         overtureCandidates: overtureCandidates.length,
-        maxGoogleDetailsRequests: args.maxGoogleDetailsRequests,
+        googleDetailsRequests: 0,
         wouldWriteSupabase: args.writeSupabase && !args.dryRun,
       },
       null,
@@ -42,11 +41,7 @@ if (args.planOnly) {
   process.exit(0);
 }
 
-const apiKey = requireEnv("GOOGLE_MAPS_SERVER_API_KEY");
 const summary = await resolvePlaceLocationBatch({
-  googleMode: "assisted",
-  maxGoogleDetailsRequests: args.maxGoogleDetailsRequests,
-  apiKey,
   curatedPlaces,
   osmCandidates,
   overtureCandidates,
@@ -92,13 +87,8 @@ function parseArgs(argv: string[]): Args {
   const curatedPath = requiredArg(argv, "--curated=");
   const osmPath = requiredArg(argv, "--osm=");
   const overturePath = requiredArg(argv, "--overture=");
-  const maxGoogleDetailsRequests = Number(requiredArg(argv, "--max-google-details-requests="));
 
-  if (!Number.isInteger(maxGoogleDetailsRequests) || maxGoogleDetailsRequests < 0) {
-    throw new Error("--max-google-details-requests must be a non-negative integer.");
-  }
-
-  return { planOnly, dryRun, curatedPath, osmPath, overturePath, maxGoogleDetailsRequests, writeSupabase };
+  return { planOnly, dryRun, curatedPath, osmPath, overturePath, writeSupabase };
 }
 
 function requiredArg(argv: string[], prefix: string): string {
@@ -114,7 +104,6 @@ function requiredArg(argv: string[], prefix: string): string {
 function loadCuratedPlaces(path: string): CuratedPlaceForResolution[] {
   const rows = JSON.parse(readFileSync(path, "utf8")) as Array<{
     id: string;
-    google_place_id: string;
     seed_name?: string;
     source_category?: string;
     cleanliness_tier?: string;
@@ -124,8 +113,7 @@ function loadCuratedPlaces(path: string): CuratedPlaceForResolution[] {
 
   return rows.map((row) => ({
     id: row.id,
-    googlePlaceId: row.google_place_id,
-    seedName: row.seed_name ?? row.google_place_id,
+    seedName: row.seed_name ?? row.id,
     sourceCategory: row.source_category ?? "generic_candidate",
     cleanlinessTier: row.cleanliness_tier ?? "tier_3",
     highwayName: row.highway_name ?? "unknown",

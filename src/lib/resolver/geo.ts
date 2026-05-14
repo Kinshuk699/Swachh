@@ -3,8 +3,6 @@ export type LatLng = {
   longitude: number;
 };
 
-export type ReferenceDistanceBand = "excellent" | "strong" | "acceptable" | "weak_review" | "over_300m_review";
-
 const earthRadiusMeters = 6_371_000;
 
 export function distanceMeters(left: LatLng, right: LatLng): number {
@@ -17,26 +15,6 @@ export function distanceMeters(left: LatLng, right: LatLng): number {
     Math.cos(leftLatitude) * Math.cos(rightLatitude) * Math.sin(deltaLongitude / 2) ** 2;
 
   return 2 * earthRadiusMeters * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine));
-}
-
-export function classifyReferenceDistance(distanceFromGoogleMeters: number): ReferenceDistanceBand {
-  if (distanceFromGoogleMeters <= 75) {
-    return "excellent";
-  }
-
-  if (distanceFromGoogleMeters <= 150) {
-    return "strong";
-  }
-
-  if (distanceFromGoogleMeters <= 200) {
-    return "acceptable";
-  }
-
-  if (distanceFromGoogleMeters <= 300) {
-    return "weak_review";
-  }
-
-  return "over_300m_review";
 }
 
 function toRadians(value: number): number {

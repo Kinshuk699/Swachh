@@ -23,7 +23,7 @@ The resolver does not store raw OSM or Overture files in Supabase. Raw source fi
 ```
 
 4. Run `npm run resolve:place-locations -- --plan-only ...` first.
-5. Run dry-run resolver batches with an explicit Google Details cap.
+5. Run dry-run resolver batches before writing to Supabase. These batches make zero Google API calls.
 6. Delete the raw `.osm.pbf` after compact candidates and resolver ledgers are produced.
 
 ## Overture Places

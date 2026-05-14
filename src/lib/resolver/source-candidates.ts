@@ -15,6 +15,7 @@ type CompactOvertureRow = {
   categories?: { primary?: string; alternate?: string[] };
   confidence?: number;
   operating_status?: string;
+  opening_hours?: string | null;
 };
 
 export function loadOsmCandidatesFromJson(json: string): OsmCandidate[] {
@@ -54,6 +55,7 @@ export function loadOvertureCandidatesFromJson(json: string): OvertureCandidate[
         ),
         confidence: row.confidence,
         operatingStatus: row.operating_status,
+        openingHours: row.opening_hours ?? null,
       },
     ];
   });

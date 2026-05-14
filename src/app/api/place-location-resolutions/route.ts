@@ -6,7 +6,6 @@ const MAP_RESPONSE_CACHE_CONTROL = "public, s-maxage=3600, stale-while-revalidat
 type PlaceLocationResolutionRow = {
   id: string;
   google_curated_place_id: string;
-  google_place_id: string;
   latitude: number | string;
   longitude: number | string;
   coordinate_source: string;
@@ -33,7 +32,7 @@ export async function GET() {
   const { data, error } = await supabase
     .from("place_location_resolutions")
     .select(
-      "id,google_curated_place_id,google_place_id,latitude,longitude,coordinate_source,coordinate_confidence,opening_hours,opening_hours_source,resolution_status",
+      "id,google_curated_place_id,latitude,longitude,coordinate_source,coordinate_confidence,opening_hours,opening_hours_source,resolution_status",
     )
     .eq("resolution_status", "auto_approved")
     .order("coordinate_confidence", { ascending: false });
@@ -48,7 +47,6 @@ export async function GET() {
   const points = ((data ?? []) as PlaceLocationResolutionRow[]).map((row) => ({
     id: row.id,
     googleCuratedPlaceId: row.google_curated_place_id,
-    googlePlaceId: row.google_place_id,
     latitude: Number(row.latitude),
     longitude: Number(row.longitude),
     coordinateSource: row.coordinate_source,

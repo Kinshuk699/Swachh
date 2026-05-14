@@ -39,6 +39,7 @@ describe("source candidate loaders", () => {
           categories: { primary: "restroom" },
           confidence: 0.9,
           operating_status: "open",
+          opening_hours: "Mo-Su 08:00-22:00",
         },
       ]),
     );
@@ -52,6 +53,7 @@ describe("source candidate loaders", () => {
       categories: ["restroom"],
       confidence: 0.9,
       operatingStatus: "open",
+      openingHours: "Mo-Su 08:00-22:00",
     });
   });
 });

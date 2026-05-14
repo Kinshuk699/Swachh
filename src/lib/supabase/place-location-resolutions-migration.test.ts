@@ -16,7 +16,6 @@ describe("place location resolutions migration", () => {
     expect(migrationSql).toContain("coordinate_source text not null");
     expect(migrationSql).toContain("resolution_status text not null");
     expect(migrationSql).toContain("opening_hours text");
-    expect(migrationSql).toContain("opening_hours_google_validation_status text");
   });
 
   it("allows open-source/manual/crowd coordinate sources only", () => {
@@ -28,10 +27,11 @@ describe("place location resolutions migration", () => {
     expect(migrationSql).not.toMatch(/coordinate_source.*google/i);
   });
 
-  it("does not persist raw Google coordinates or raw Google hours", () => {
-    expect(migrationSql).not.toMatch(/google_latitude|google_longitude|google_opening_hours|google_weekday_descriptions/i);
-    expect(migrationSql).toContain("distance_to_google_reference_meters numeric");
-    expect(migrationSql).toContain("opening_hours_google_validation_status text");
+  it("does not persist Google Place Details fields or validation derivatives", () => {
+    expect(migrationSql).not.toMatch(
+      /google_place_id|google_latitude|google_longitude|google_opening_hours|google_weekday_descriptions|distance_to_google_reference_meters|opening_hours_google_validation_status/i,
+    );
+    expect(migrationSql).toContain("open_source_agreement_meters numeric");
   });
 
   it("keeps over-300m rows reviewable rather than rejected by schema", () => {

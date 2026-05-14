@@ -5,7 +5,6 @@ const orderSpy = vi.fn(async () => ({
     {
       id: "resolution-1",
       google_curated_place_id: "curated-1",
-      google_place_id: "google-place-1",
       latitude: 12.5737,
       longitude: 78.1692,
       coordinate_source: "osm",
@@ -58,6 +57,7 @@ describe("GET /api/place-location-resolutions", () => {
         },
       ],
     });
+    expect(JSON.stringify(body)).not.toContain("googlePlaceId");
     expect(fromSpy).toHaveBeenCalledWith("place_location_resolutions");
     expect(eqSpy).toHaveBeenCalledWith("resolution_status", "auto_approved");
   });

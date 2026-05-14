@@ -2,90 +2,81 @@ import { describe, expect, it } from "vitest";
 
 import { resolvePlaceLocation, toPlaceLocationResolutionRow } from "./place-location-resolution";
 
-const googleReference = { latitude: 12.5732978, longitude: 78.1692122 };
-
 describe("place location resolution", () => {
-  it("auto-approves a strong OSM and Overture agreement", () => {
+  it("auto-approves a strong OSM and Overture coordinate agreement without Google", () => {
     const resolution = resolvePlaceLocation({
       curatedPlace: baseCuratedPlace(),
-      googleReference,
       osmCandidates: [baseOsmCandidate({ latitude: 12.5737478, longitude: 78.1692122 })],
       overtureCandidates: [baseOvertureCandidate({ latitude: 12.5737578, longitude: 78.1692122 })],
-      googleWeekdayDescriptions: ["Monday: Open 24 hours"],
     });
 
     expect(resolution.status).toBe("auto_approved");
     expect(resolution.coordinateSource).toBe("osm_overture");
     expect(resolution.openingHours).toBe("24/7");
+    expect(resolution.openSourceAgreementMeters).toBeLessThan(5);
   });
 
-  it("auto-approves a strong Overture-only match without opening-hours claims", () => {
+  it("keeps single-source Overture coordinates for review without opening-hours claims", () => {
     const resolution = resolvePlaceLocation({
       curatedPlace: baseCuratedPlace(),
-      googleReference,
       osmCandidates: [],
       overtureCandidates: [baseOvertureCandidate({ latitude: 12.5737478, longitude: 78.1692122 })],
-      googleWeekdayDescriptions: ["Monday: Open 24 hours"],
     });
 
-    expect(resolution.status).toBe("auto_approved");
+    expect(resolution.status).toBe("needs_review");
+    expect(resolution.reviewReason).toBe("single_source_overture");
     expect(resolution.coordinateSource).toBe("overture");
     expect(resolution.openingHours).toBeNull();
-    expect(resolution.openingHoursGoogleValidationStatus).toBe("osm_missing");
   });
 
-  it("keeps 200-300m matches for review", () => {
+  it("keeps OSM and Overture disagreements for review", () => {
     const resolution = resolvePlaceLocation({
       curatedPlace: baseCuratedPlace(),
-      googleReference,
-      osmCandidates: [baseOsmCandidate({ latitude: 12.5755478, longitude: 78.1692122 })],
-      overtureCandidates: [],
-      googleWeekdayDescriptions: [],
-    });
-
-    expect(resolution.status).toBe("needs_review");
-    expect(resolution.reviewReason).toBe("weak_distance_200_300m");
-  });
-
-  it("keeps over-300m matches for review rather than rejecting", () => {
-    const resolution = resolvePlaceLocation({
-      curatedPlace: baseCuratedPlace(),
-      googleReference,
-      osmCandidates: [baseOsmCandidate({ latitude: 12.5782978, longitude: 78.1692122 })],
-      overtureCandidates: [],
-      googleWeekdayDescriptions: [],
-    });
-
-    expect(resolution.status).toBe("needs_review");
-    expect(resolution.reviewReason).toBe("distance_over_300m");
-  });
-
-  it("builds a Supabase row without Google coordinate or raw Google hours", () => {
-    const resolution = resolvePlaceLocation({
-      curatedPlace: baseCuratedPlace(),
-      googleReference,
       osmCandidates: [baseOsmCandidate({ latitude: 12.5737478, longitude: 78.1692122 })],
-      overtureCandidates: [],
-      googleWeekdayDescriptions: ["Monday: Open 24 hours"],
+      overtureCandidates: [baseOvertureCandidate({ latitude: 12.5767478, longitude: 78.1692122 })],
+    });
+
+    expect(resolution.status).toBe("needs_review");
+    expect(resolution.reviewReason).toBe("open_source_disagreement_over_200m");
+  });
+
+  it("uses Overture opening hours if supplied and OSM is missing", () => {
+    const resolution = resolvePlaceLocation({
+      curatedPlace: baseCuratedPlace(),
+      osmCandidates: [],
+      overtureCandidates: [
+        { ...baseOvertureCandidate({ latitude: 12.5737478, longitude: 78.1692122 }), openingHours: "Mo-Su 08:00-22:00" },
+      ],
+    });
+
+    expect(resolution.status).toBe("needs_review");
+    expect(resolution.openingHours).toBe("Mo-Su 08:00-22:00");
+    expect(resolution.openingHoursSource).toBe("overture");
+  });
+
+  it("builds a Supabase row without Google Place Details fields", () => {
+    const resolution = resolvePlaceLocation({
+      curatedPlace: baseCuratedPlace(),
+      osmCandidates: [baseOsmCandidate({ latitude: 12.5737478, longitude: 78.1692122 })],
+      overtureCandidates: [baseOvertureCandidate({ latitude: 12.5737578, longitude: 78.1692122 })],
     });
 
     const row = toPlaceLocationResolutionRow(resolution);
 
     expect(row).toMatchObject({
       google_curated_place_id: "curated-1",
-      google_place_id: "google-place-1",
-      coordinate_source: "osm",
+      coordinate_source: "osm_overture",
       opening_hours: "24/7",
     });
-    expect(JSON.stringify(row)).not.toContain("googleReference");
-    expect(JSON.stringify(row)).not.toContain("Monday: Open 24 hours");
+    expect(JSON.stringify(row)).not.toContain("google_place_id");
+    expect(JSON.stringify(row)).not.toContain("distance_to_google_reference_meters");
+    expect(JSON.stringify(row)).not.toContain("opening_hours_google_validation_status");
   });
 });
 
 function baseCuratedPlace() {
   return {
     id: "curated-1",
-    googlePlaceId: "google-place-1",
     seedName: "Lavato Krishnagiri",
     sourceCategory: "premium_restroom",
     cleanlinessTier: "tier_1",
