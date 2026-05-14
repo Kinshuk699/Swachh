@@ -16,7 +16,8 @@
     "export:google-curated-place-map-ledger": "node --experimental-transform-types scripts/export-google-curated-places-map-ledger.ts",
     "export:google-curated-place-review": "node --experimental-transform-types scripts/export-google-curated-places-review.ts",
     "export:google-curated-place-type-audit": "node --experimental-transform-types scripts/export-google-curated-places-type-audit.ts",
-    "export:google-curated-place-rejections": "node --experimental-transform-types scripts/export-rejected-google-curated-places-review.ts"
+    "export:google-curated-place-rejections": "node --experimental-transform-types scripts/export-rejected-google-curated-places-review.ts",
+    "resolve:place-locations": "node --experimental-transform-types scripts/resolve-place-locations.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "latest",
